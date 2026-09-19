@@ -113,25 +113,108 @@ function makeCtx(canvas) {
   return ctx;
 }
 
+function makeStyle() {
+  return { setProperty() {}, removeProperty() {}, getPropertyValue: () => "" };
+}
+
+function makeClassList() {
+  const set = new Set();
+  return {
+    add: (...c) => c.forEach((x) => set.add(x)),
+    remove: (...c) => c.forEach((x) => set.delete(x)),
+    contains: (c) => set.has(c),
+    toggle: (c, on) => { const v = on === undefined ? !set.has(c) : !!on; if (v) set.add(c); else set.delete(c); return v; },
+  };
+}
+
+function makeEl(tag) {
+  const el = {
+    tagName: (tag || "div").toUpperCase(),
+    style: makeStyle(),
+    classList: makeClassList(),
+    dataset: {},
+    children: [],
+    textContent: "",
+    attrs: {},
+    handlers: {},
+    setAttribute(k, v) { this.attrs[k] = String(v); },
+    getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; },
+    removeAttribute(k) { delete this.attrs[k]; },
+    addEventListener(k, f) { (this.handlers[k] = this.handlers[k] || []).push(f); },
+    removeEventListener() {},
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    setPointerCapture() {}, releasePointerCapture() {},
+    appendChild(c) { this.children.push(c); return c; },
+    focus() {}, blur() {}, click() {},
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: w, height: h, right: w, bottom: h }),
+  };
+  return el;
+}
+
 function makeCanvas(w = 480, h = 288) {
-  const c = { width: w, height: h, style: {}, classList: { add() {}, remove() {} } };
+  const c = { width: w, height: h, style: makeStyle(), classList: makeClassList() };
   c.getContext = () => (c._ctx || (c._ctx = makeCtx(c)));
   c.getBoundingClientRect = () => ({ left: 0, top: 0, width: w, height: h, right: w, bottom: h });
-  c.addEventListener = () => {};
+  c.handlers = {};
+  c.addEventListener = (k, f) => { (c.handlers[k] = c.handlers[k] || []).push(f); };
   c.removeEventListener = () => {};
   return c;
 }
 
 /* ── DOM stubs ───────────────────────────────────────────────────────────── */
 const screen = makeCanvas(480, 288);
+
+/* the touch deck is built from the real markup in index.html, so the harness
+   breaks the moment the page and the code drift apart */
+const htmlSrc = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
+const deckMarkup = htmlSrc.slice(htmlSrc.indexOf('<div id="deck"'),
+                                 htmlSrc.indexOf("<script src="));
+
+function buildDeck(markup) {
+  const deck = makeEl("div");
+  deck.id = "deck";
+  const kids = [];
+  const spawn = (attrs, inner, tag) => {
+    const el = makeEl(tag);
+    for (const [k, v] of attrs) el.setAttribute(k, v);
+    if (/<small[^>]*>([\s\S]*?)<\/small>/.test(inner || "")) {
+      const small = makeEl("small");
+      small.textContent = RegExp.$1.trim();
+      el.small = small;
+    }
+    el.querySelector = (sel) => (sel === "small" ? el.small || null : null);
+    kids.push(el);
+    return el;
+  };
+  for (const m of markup.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)) {
+    const attrs = [...m[1].matchAll(/([a-z-]+)="([^"]*)"/g)].map((a) => [a[1], a[2]]);
+    spawn(attrs, m[2], "button");
+  }
+  for (const m of markup.matchAll(/<(span|div|i)\b([^>]*)>/g)) {
+    const attrs = [...m[2].matchAll(/([a-z-]+)="([^"]*)"/g)].map((a) => [a[1], a[2]]);
+    if (attrs.some(([k]) => ["data-v", "data-bar", "data-warn", "data-only"].includes(k)))
+      spawn(attrs, "", m[1]);
+  }
+  deck.querySelectorAll = (sel) => {
+    const key = sel.replace(/[\[\]]/g, "");
+    return kids.filter((k) => (k.attrs[key] !== undefined));
+  };
+  return deck;
+}
+const deck = buildDeck(deckMarkup);
+
 const els = {
   screen,
+  deck,
+  stage: Object.assign(makeEl("div"), { id: "stage", clientWidth: 1280, clientHeight: 720 }),
   boot: { classList: { add() {}, remove() {} }, style: {} },
   "boot-fill": { style: {} },
   "boot-note": { style: {}, textContent: "" },
   hint: { classList: { add() {}, remove() {} }, style: {} },
 };
 const listeners = {};
+const docListeners = {};
 const sandbox = {
   console,
   requestAnimationFrame: () => 0,
@@ -142,6 +225,9 @@ const sandbox = {
   removeEventListener: () => {},
   innerWidth: 1280, innerHeight: 800,
   devicePixelRatio: 1,
+  matchMedia: (q) => ({ matches: /coarse/.test(q) ? false : false, media: q }),
+  navigator: { maxTouchPoints: 5, userAgent: "headless", vibrate: () => true },
+  location: { search: "", href: "http://localhost/" },
   localStorage: (() => {
     const m = new Map();
     return {
@@ -154,9 +240,14 @@ const sandbox = {
   document: {
     hidden: false,
     getElementById: (id) => els[id] || null,
-    createElement: (tag) => (tag === "canvas" ? makeCanvas(1, 1) : { style: {}, appendChild() {} }),
-    body: { appendChild() {} },
-    addEventListener: () => {},
+    querySelector: (sel) => (sel === "body" ? sandbox.document.body : null),
+    querySelectorAll: () => [],
+    createElement: (tag) => (tag === "canvas" ? makeCanvas(1, 1) : makeEl(tag)),
+    documentElement: makeEl("html"),
+    body: makeEl("body"),
+    addEventListener: (k, f) => { (docListeners[k] = docListeners[k] || []).push(f); },
+    fullscreenElement: null,
+    exitFullscreen: () => {},
   },
 };
 sandbox.window = sandbox;
@@ -179,6 +270,12 @@ sandbox.Image = FakeImage;
 sandbox.AudioContext = undefined;
 sandbox.webkitAudioContext = undefined;
 
+/* seed the sandbox's randomness too, so a run is reproducible end to end */
+let randState = SEED >>> 0 || 1;
+const seededRandom = () => ((randState = (randState * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+sandbox.Math = Object.create(Math);
+sandbox.Math.random = seededRandom;
+
 const ctx = vm.createContext(sandbox);
 /* take the script order straight from index.html — a mismatch there is a bug
    the browser would hit immediately and a fixed list would hide */
@@ -198,6 +295,16 @@ console.log(`✓ all ${files.length} scripts loaded`);
 
 /* ── drive the game ──────────────────────────────────────────────────────── */
 const DG = sandbox.DG;
+const TOUCH = arg("touch", "") === "1";
+/* which control flavour a screen script should render: QA wants both, a
+   screenshot render wants one.  --ui=touch | --ui=desktop | (default: both) */
+const UI = arg("ui", "both");
+function flavour(f) {
+  if (UI === "touch") { if (f === 0) DG.Touch.enabled = true; return; }
+  if (UI === "desktop") { if (f === 0) DG.Touch.enabled = false; return; }
+  if (f === 0) DG.Touch.enable();
+  if (f === Math.floor(FRAMES / 2)) DG.Touch.enabled = false;
+}
 const missingAssets = new Set();
 const T = vm.runInContext("T", ctx);
 const TILES = vm.runInContext("TILES", ctx);
@@ -211,6 +318,7 @@ async function main() {
   const realA = DG.Assets.A.bind(DG.Assets);
   DG.Assets.A = (p) => { const img = realA(p); if (!img) missingAssets.add(p); return img; };
 
+  if (TOUCH) DG.Touch.enable();
   game.rig = new DG.Rig(SEED);
   game.logLines = [];
   if (FORCE_STATE) game.state = FORCE_STATE;
@@ -220,6 +328,17 @@ async function main() {
   const STEP = 1 / 60;
   const log = [];
   let t = 0;
+  const T3 = {
+    fails: [],
+    assert(label, ok) {
+      if (ok) { T3.passed++; return; }
+      if (T3.fails.includes(label)) return;
+      T3.fails.push(label);
+      console.log("✗ " + label);
+      process.exitCode = 1;
+    },
+    passed: 0,
+  };
 
   /* deterministic input driver */
   let rngState = 1337;
@@ -305,6 +424,7 @@ async function main() {
 
     /* burrowers chew and can be flushed */
     rig.hull = 100; rig.status = "idle";
+    rig.grubs = [];                     /* the rock may have spawned its own */
     rig.spawnGrub(game);
     ok("burrowers spawn", rig.grubs.length === 1);
     rig.x = rig.grubs[0].x; rig.y = rig.grubs[0].y;
@@ -383,6 +503,47 @@ async function main() {
     ok("reload restores banked ore", game.rig.bank.diamond === 7);
     ok("reload restores the drilled shaft", game.rig.well.drilled.size === rig.well.drilled.size);
 
+    /* the phone layout: the glass must fit whatever the deck leaves it.
+       These are real viewport sizes, portrait and landscape. */
+    const devices = [
+      ["iPhone SE", 375, 667, 2], ["iPhone 14", 390, 844, 3], ["iPhone 14 Pro Max", 430, 932, 3],
+      ["Pixel 7", 412, 915, 2.6], ["landscape phone", 844, 340, 3],
+      ["iPad portrait", 820, 1180, 2], ["desktop", 1600, 900, 1], ["tiny window", 320, 420, 1],
+    ];
+    for (const [name, w, h, dpr] of devices) {
+      const s = DG.Touch.fitScale(w, h, dpr);
+      ok(`${name}: the glass fits the width`, 480 * s <= w + 0.51);
+      ok(`${name}: the glass fits the height`, 288 * s <= h + 0.51);
+      ok(`${name}: the glass stays worth looking at`, s >= 0.5);
+      ok(`${name}: the scale is sane`, isFinite(s) && s > 0 && s < 8);
+    }
+
+    /* the deck's view model has to agree with the console it mirrors */
+    game.state = "console";
+    const R2 = game.rig;                    /* the systems suite may have swapped it */
+    R2.wrecked = false; R2.status = "idle";
+    R2.credits = 0; R2.hull = R2.hullMax; R2.heat = 0;
+    const dm = DG.Touch.model(game);
+    ok("the deck model follows the console", dm.pad === "console");
+    ok("the deck reads out depth and credits", typeof dm.depth === "string" && typeof dm.credits === "string");
+    ok("the deck refuses PATCH with no credits", dm.btn.patch.disabled === true);
+    ok("the deck refuses VENT when there is no heat to dump", dm.btn.purge.disabled === true);
+    R2.credits = 900; R2.hull = R2.hullMax - 40; R2.heat = 60;
+    const dm2 = DG.Touch.model(game);
+    ok("the deck offers PATCH once it is affordable and needed", dm2.btn.patch.disabled === false);
+    ok("the deck offers VENT once there is heat to dump", dm2.btn.purge.disabled === false);
+    R2.hull = R2.hullMax * 0.2;
+    ok("the deck warns about a thin hull", DG.Touch.model(game).warnHull === true);
+    R2.heat = R2.heatMax * 0.95;
+    ok("the deck warns about a hot loop", DG.Touch.model(game).warnHeat === true);
+    R2.hull = R2.hullMax; R2.heat = 0; R2.credits = 0;
+    const deckActs = [...deckMarkup.matchAll(/data-act="([a-z]+)"/g)].map((m) => m[1]);
+    ok("the page ships at least ten deck controls", deckActs.length >= 10);
+    ok("every deck control has an action behind it",
+       deckActs.every((id) => DG.Touch.actionIds.includes(id)));
+    ok("every action the deck exposes is wired to a real command",
+       DG.Touch.actionIds.every((id) => typeof id === "string"));
+
     /* every screen draws without exploding */
     for (const st of ["title", "console", "depot", "pause", "wrecked", "wrecked"]) {
       game.state = st;
@@ -442,6 +603,17 @@ async function main() {
 
   /* ── play scripts ─────────────────────────────────────────────────────── */
   const rig = game.rig;
+  const fire = (el, type, ev) => {
+    for (const h of (el && el.handlers && el.handlers[type]) || []) h(ev);
+  };
+  const dexBtn = (id) => deck.querySelectorAll("data-act")
+                             .find((b) => b.getAttribute("data-act") === id);
+  const pev = (id) => ({ preventDefault() {}, pointerId: id, pointerType: "touch" });
+  const tev = (ids, x, y) => ({
+    preventDefault() {},
+    changedTouches: ids.map((id) => ({ identifier: id, clientX: x, clientY: y })),
+    touches: [],
+  });
   const out = OUT ? [] : null;
   if (OUT) game.g.record = () => {};
 
@@ -504,11 +676,16 @@ async function main() {
       if (SCRIPT === "wrecked") {
         if (f === 30) { rig.hull = 0; rig.tick(STEP, game); }
         game.state = f < 30 ? "console" : "wrecked";
+        flavour(f);
       } else {
         game.pauseFrom = Math.floor(f / 100) % 2 ? "depot" : "console";
         game.state = "pause";
+        flavour(f);
       }
     } else if (SCRIPT === "title") {
+      /* both flavours of the title get rendered and audited: the phone deck
+         first (TAP …), then the keyboard chrome it ends the screenshot on */
+      flavour(f);
       game.state = "title";
     } else if (SCRIPT === "title_save") {
       /* the title's other branch: a save file exists (and is being read) */
@@ -523,6 +700,65 @@ async function main() {
       game.state = "title";
     } else if (SCRIPT === "idle") {
       game.state = "console";
+    } else if (SCRIPT === "touch") {
+      /* the deck, driven the way a pair of thumbs would drive it.
+         NB: START calls newRun(), which swaps game.rig — always read it live. */
+      DG.Touch.enable();
+      const R = game.rig;
+      if (f === 0) {
+        game.state = "title";
+        T3.assert("the deck shows the title pad", DG.Touch.model(game).pad === "title");
+      } else if (f === 2) {
+        T3.assert("START opens the depot", DG.Touch.act("start", game) && game.state === "depot");
+        T3.assert("the deck follows into the depot", DG.Touch.model(game).pad === "depot");
+      } else if (f === 4) {
+        T3.assert("DESCEND puts the rig down the shaft",
+                  DG.Touch.act("descend", game) && game.state === "console");
+      } else if (f === 8) {
+        T3.assert("an unaffordable PATCH is refused",
+                  DG.Touch.act("patch", game) === false && R.hull === R.hullMax);
+        fire(dexBtn("drill"), "pointerdown", pev(11));       /* thumb 1: hold DRILL */
+        T3.assert("DRILL latches the hold flag", DG.Input.hold.drill === true);
+      } else if (f === 60) {
+        T3.assert("holding DRILL sank the shaft", R.y > 2);
+        fire(dexBtn("drill"), "pointerup", pev(11));
+        fire(dexBtn("right"), "pointerdown", pev(12));       /* thumb 2: walk the seam */
+        T3.xAtHold = R.x;
+      } else if (f === 200) {
+        fire(dexBtn("right"), "pointerup", pev(12));
+        T3.assert("holding RIGHT walks the seam", R.x - T3.xAtHold >= 2);
+        /* both thumbs down at once: the drill bites, the pad waits its turn */
+        T3.xBoth = R.x;
+        T3.yBoth = R.y;
+        fire(dexBtn("drill"), "pointerdown", pev(13));
+        fire(dexBtn("left"), "pointerdown", pev(14));
+      } else if (f === 280) {
+        fire(dexBtn("left"), "pointerup", pev(14));
+        fire(dexBtn("drill"), "pointerup", pev(13));
+        T3.assert("two holds at once: the drill still bites", R.y > T3.yBoth + 2);
+        T3.assert("…and steering waits for the bit to stop", Math.abs(R.x - T3.xBoth) <= 1);
+      } else if (f === 284) {
+        /* two fingers on the glass at once: the rig keeps drilling */
+        fire(screen, "touchstart", tev([21, 22], 240, 160));
+        T3.assert("the glass counts both fingers", DG.Input.pointers === 2);
+        T3.assert("a finger on the glass runs the bit", DG.Input.down === true);
+        T3.yGlass = R.y;
+      } else if (f === 400) {
+        T3.assert("a finger on the glass keeps drilling", R.y > T3.yGlass + 2);
+        fire(screen, "touchend", tev([21], 240, 160));
+        T3.assert("one finger left", DG.Input.pointers === 1);
+        fire(screen, "touchend", tev([22], 240, 160));
+        T3.assert("the glass is clear", DG.Input.pointers === 0 && DG.Input.down === false);
+        T3.assert("the deck knows every button the page ships",
+                  [...deckMarkup.matchAll(/data-act="([a-z]+)"/g)]
+                    .every((m) => DG.Touch.actionIds.includes(m[1])));
+      } else if (f === 404) {
+        R.heat = 80;
+        T3.assert("VENT starts the coolant loop",
+                  DG.Touch.act("vent", game) && R.status === "venting");
+      } else if (f === 419) {
+        T3.assert("the coolant loop is dumping heat", R.heat < 78);
+      }
     }
 
     if (OUT) {
@@ -547,13 +783,16 @@ async function main() {
   const calls = game.g.calls;
   console.log(log.join("\n"));
   console.log(`✓ ${FRAMES} frames simulated, no errors (${Math.round(calls / FRAMES)} canvas calls/frame)`);
+  if (SCRIPT === "touch")
+    console.log(`✓ ${T3.passed}/${T3.passed + T3.fails.length} touch-deck checks`);
   report();
-  console.log(`  state=${game.state} status=${rig.status} drill=${rig.drill.name} ` +
-              `depth=${Math.round(rig.metres)}m deepest=${Math.round(rig.depthRecord)}m`);
-  console.log(`  hull=${rig.hull.toFixed(0)}/${rig.hullMax} heat=${rig.heat.toFixed(0)}% ` +
-              `cargo=${JSON.stringify(rig.cargo)} credits=${rig.credits}`);
-  console.log(`  cells drilled=${rig.well.drilled.size} contracts=${rig.contracts.filter((c) => c.done).length}/13 ` +
-              `kills=${rig.kills} runs=${rig.runs}`);
+  const end = game.rig || rig;
+  console.log(`  state=${game.state} status=${end.status} drill=${end.drill.name} ` +
+              `depth=${Math.round(end.metres)}m deepest=${Math.round(end.depthRecord)}m`);
+  console.log(`  hull=${end.hull.toFixed(0)}/${end.hullMax} heat=${end.heat.toFixed(0)}% ` +
+              `cargo=${JSON.stringify(end.cargo)} credits=${end.credits}`);
+  console.log(`  cells drilled=${end.well.drilled.size} contracts=${end.contracts.filter((c) => c.done).length}/13 ` +
+              `kills=${end.kills} runs=${end.runs}`);
 
   function report() {
     if (DG.UI && DG.UI.unknownColors && DG.UI.unknownColors.size) {

@@ -1,7 +1,11 @@
 name: Publish to GitHub Pages
 
-# The game is plain static files — this workflow just stages them and hands the
-# folder to GitHub Pages.  No build step, no dependencies.
+# The game is plain static files — this workflow stages exactly what a browser
+# needs and hands the folder to GitHub Pages.  No build step, no dependencies.
+#
+# Pages itself is a one-time repository setting (Settings → Pages → Source:
+# GitHub Actions).  Until that switch is flipped, the workflow says so instead
+# of failing: it skips the deploy and prints the link.
 on:
   push:
     branches: ["arena/01a0ba7c-aitest", "main"]
@@ -27,25 +31,54 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Configure Pages
+        id: pages
+        continue-on-error: true
         uses: actions/configure-pages@v5
         with:
           enablement: true
 
-      - name: Stage the site
+      - name: Pages is not switched on yet
+        if: steps.pages.outcome == 'failure'
         run: |
-          set -e
+          {
+            echo "### GitHub Pages is not enabled for this repository"
+            echo ""
+            echo "Everything the site needs is in this commit. Flip the switch once:"
+            echo ""
+            echo "1. open https://github.com/${{ github.repository }}/settings/pages"
+            echo "2. **Build and deployment → Source: GitHub Actions**"
+            echo "3. re-run this workflow (or push again) — the game goes live at"
+            echo "   https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning title=GitHub Pages is off::Enable Settings → Pages → Source: GitHub Actions, then re-run this workflow."
+        continue-on-error: true
+
+      - name: Stage the site
+        if: steps.pages.outcome == 'success'
+        run: |
+          set -eu
           mkdir -p _site
-          cp index.html style.css manifest.webmanifest .nojekyll _site/
-          cp icon-192.png icon-512.png apple-touch-icon.png _site/ 2>/dev/null || true
+          for f in index.html style.css manifest.webmanifest icon-192.png \
+                   icon-512.png apple-touch-icon.png favicon-32.png .nojekyll; do
+            if [ ! -f "$f" ]; then echo "::error file=$f::the site is missing $f"; exit 1; fi
+            cp "$f" _site/
+          done
           cp -r js assets _site/
-          # keep the deploy lean — the QA harness and the screenshot set stay in the repo
-          rm -f _site/js/assetlist.js.bak
+          # the QA harness, the art tools and the screenshots stay in the repo
+          du -sh _site
+          find _site -type f | wc -l
 
       - name: Upload the artifact
+        if: steps.pages.outcome == 'success'
         uses: actions/upload-pages-artifact@v3
         with:
           path: _site
 
       - name: Deploy
         id: deployment
+        if: steps.pages.outcome == 'success'
         uses: actions/deploy-pages@v4
+
+      - name: Where it landed
+        if: steps.pages.outcome == 'success'
+        run: echo "published to ${{ steps.deployment.outputs.page_url }}"

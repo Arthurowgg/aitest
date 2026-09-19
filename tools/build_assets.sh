@@ -11,6 +11,14 @@ python3 gen_ui.py
 python3 gen_ui2.py
 python3 gen_rig.py
 python3 gen_bg.py
+
+# the launcher icons for the phone home screen live at the repo root
+bash gen_icons.sh
+
+# ...and one reproducible-art pass: ImageMagick stamps every PNG it writes with
+# a tIME chunk, which would otherwise show up as 290 modified files per rebuild
+python3 ../tools/png_clean.py ../assets \
+  ../icon-192.png ../icon-512.png ../apple-touch-icon.png ../favicon-32.png
 echo "✅ $(find ../assets -name '*.png' | wc -l) PNG files → $(du -sh ../assets | cut -f1)"
 
 # generate the runtime asset manifest (no fetch() at runtime → works from file://)

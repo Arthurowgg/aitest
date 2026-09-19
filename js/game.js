@@ -23,6 +23,9 @@ DG.Game = class Game {
     this.wreckT = 0;
     this.pauseFrom = "console";
     this.acc = 0;
+    this.steerDir = 0;                  /* held steering: pads and arrow keys */
+    this.steerT = 0;
+    this.steerRepeats = 0;
     this.rig = null;
     this.newRun(true);
   }
@@ -84,6 +87,7 @@ DG.Game = class Game {
     this.state = "wrecked";
     this.wreckT = 0;
     DG.Audio.alarm();
+    if (DG.Input.rumble) DG.Input.rumble([40, 70, 160]);
     this.flash("#ff3a3a", 0.7);
     this.shake(1.1, 8);
     const lost = rig.cargoUsed;
@@ -133,6 +137,30 @@ DG.Game = class Game {
       }
     }
 
+    /* held steering: tap to step one column, hold to crawl along the seam.
+       The deck's pads, A/D and the arrows all feed the same two flags. */
+    if (this.state === "console") {
+      const I = DG.Input;
+      const left = !!(I.hold.left || I.key("KeyA") || I.key("ArrowLeft"));
+      const right = !!(I.hold.right || I.key("KeyD") || I.key("ArrowRight"));
+      const dir = (left ? -1 : 0) + (right ? 1 : 0);
+      if (dir !== this.steerDir) {
+        this.steerDir = dir;
+        this.steerT = 0;
+        this.steerRepeats = 0;
+        if (dir && !this.rig.wrecked) { DG.Audio.click(); this.rig.cmdMove(dir, this); }
+      } else if (dir) {
+        this.steerT += dt;
+        if (this.steerT >= (this.steerRepeats ? 0.17 : 0.34)) {
+          this.steerT = 0;
+          this.steerRepeats++;
+          if (!this.rig.wrecked) this.rig.cmdMove(dir, this);
+        }
+      }
+    } else {
+      this.steerDir = 0;
+    }
+
     DG.Console.setScanFx(this.sonar > 0 ? Math.min(1, this.sonar * 1.6) : 0);
 
     /* the mine breathes: drone swells with depth while the console runs */
@@ -166,19 +194,19 @@ DG.Game = class Game {
 
     if (this.state === "console") {
       if (I.hit("Escape")) { this.pauseFrom = "console"; this.state = "pause"; this.save(); return; }
-      if (I.hit("KeyA")) { DG.Audio.click(); this.rig.cmdMove(-1, this); }
-      if (I.hit("KeyD")) { DG.Audio.click(); this.rig.cmdMove(1, this); }
       if (I.hit("KeyX")) this.rig.cmdVent(this);
       if (I.hit("KeyC")) this.rig.cmdScan(this);
       if (I.hit("KeyR")) this.rig.useConsumable("patch", this);
       if (I.hit("KeyQ")) this.rig.useConsumable("purge", this);
       if (I.hit("KeyE")) this.rig.cmdAscend(this);
       if (I.hit("KeyM")) this.log(DG.Audio.toggle() ? "AUDIO MUTED" : "AUDIO ON", "info");
-      /* drilling: SPACE, a held mouse over the borehole, or the drill button */
+      /* drilling: SPACE, the deck's DRILL button, or a held finger/mouse on the
+         borehole itself — any of them, all at once */
       const v = DG.Console.L.view;
       const overGlass = I.mx > v.x && I.mx < v.x + v.w && I.my > v.y + 24 && I.my < v.y + v.h;
       const overButton = DG.UI.hot.hover === "drillBtn";
-      this.rig.cmdDrill(I.key("Space") || (I.down && (overGlass || overButton)));
+      this.rig.cmdDrill(!!(I.key("Space") || I.hold.drill ||
+                           (I.down && (overGlass || overButton))));
       return;
     }
 

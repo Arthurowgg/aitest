@@ -2,23 +2,89 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>DEEPDIG — rig console</title>
 <meta name="description" content="DEEPDIG: operate a mining rig by console — drill the strata, vent the heat, forge seven bits, sell the haul.">
+<meta name="theme-color" content="#05060a">
+<meta name="color-scheme" content="dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DEEPDIG">
+<meta name="mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="style.css">
-<link rel="icon" href="assets/ui/icon_pick_diamond.png">
+<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
 </head>
 <body>
-<div id="stage">
-  <canvas id="screen" width="480" height="288"></canvas>
-  <div id="boot">
-    <div class="boot-inner">
-      <div class="boot-title">DEEPDIG</div>
-      <div class="boot-bar"><i id="boot-fill"></i></div>
-      <div class="boot-note" id="boot-note">warming up the lamp…</div>
+
+<div id="shell">
+  <div id="stage">
+    <canvas id="screen" width="480" height="288" aria-label="DEEPDIG rig console"></canvas>
+    <div id="boot">
+      <div class="boot-inner">
+        <div class="boot-title">DEEPDIG</div>
+        <div class="boot-bar"><i id="boot-fill"></i></div>
+        <div class="boot-note" id="boot-note">warming up the lamp…</div>
+      </div>
+    </div>
+    <div id="hint">mouse or keys: hold to drill · A/D steer · X vent · C sonar · E ascend · ESC pause</div>
+  </div>
+
+  <!-- the touch deck: shown on phones and tablets, never on a desktop pointer -->
+  <div id="deck" class="deck" role="group" aria-label="Rig controls">
+    <div class="deck-head">
+      <div class="chip"><b>DEPTH</b><span class="v" data-v="depth">0 m</span></div>
+      <div class="chip"><b>CREDITS</b><span class="v" data-v="credits">0</span></div>
+      <div class="chip bar" data-warn="hull"><b>HULL</b><span class="track"><i data-bar="hull"></i></span><span class="v" data-v="hull">100</span></div>
+      <div class="chip bar" data-warn="heat"><b>HEAT</b><span class="track"><i data-bar="heat"></i></span><span class="v" data-v="heat">0</span></div>
+      <button class="iconbtn" data-act="pause" aria-label="Pause">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14M15 5v14"/></svg>
+      </button>
+      <button class="iconbtn" data-act="fullscreen" aria-label="Toggle fullscreen">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+      </button>
+    </div>
+
+    <div class="deck-body">
+      <!-- the console: the rig, under your thumbs -->
+      <div class="pad" data-only="console">
+        <button class="btn drill" data-act="drill" data-hold><span>DRILL</span><small>hold</small></button>
+        <button class="btn sq" data-act="left" data-hold><span>&#8249;&#8249;</span><small>left</small></button>
+        <button class="btn sq" data-act="right" data-hold><span>&#8250;&#8250;</span><small>right</small></button>
+        <button class="btn" data-act="vent"><span>VENT</span><small>cool</small></button>
+        <button class="btn" data-act="sonar"><span>SONAR</span><small>scan</small></button>
+        <button class="btn" data-act="patch"><span>PATCH</span><small data-v="patch">130</small></button>
+        <button class="btn" data-act="purge"><span>PURGE</span><small data-v="purge">100</small></button>
+        <button class="btn wide" data-act="ascend"><span>ASCEND</span><small>winch to the depot</small></button>
+      </div>
+
+      <!-- the depot: bank the haul, go back down -->
+      <div class="pad" data-only="depot">
+        <button class="btn wide" data-act="sell"><span>SELL ALL</span><small data-v="bank">nothing banked</small></button>
+        <button class="btn wide go" data-act="descend"><span>DESCEND</span><small data-v="descend">begin the first shaft</small></button>
+      </div>
+
+      <!-- the title -->
+      <div class="pad" data-only="title">
+        <button class="btn wide go" data-act="start"><span>START SHIFT</span><small data-v="start">a fresh shaft</small></button>
+        <button class="btn wide" data-act="newshaft"><span>NEW SHAFT</span><small>erases the save</small></button>
+      </div>
+
+      <!-- paused -->
+      <div class="pad" data-only="pause">
+        <button class="btn wide go" data-act="resume"><span>RESUME</span><small>back to the console</small></button>
+        <button class="btn wide" data-act="save"><span>SAVE</span><small>bank the shift</small></button>
+        <button class="btn wide" data-act="newshaft"><span>NEW SHAFT</span><small>erases the save</small></button>
+      </div>
+
+      <!-- wrecked -->
+      <div class="pad" data-only="wrecked">
+        <button class="btn wide go" data-act="rebuild"><span>REBUILD</span><small>a new rig at the depot</small></button>
+      </div>
     </div>
   </div>
-  <div id="hint">mouse or keys: hold to drill · A/D steer · X vent · C sonar · E ascend · ESC pause</div>
 </div>
 
 <script src="js/core.js"></script>
@@ -31,6 +97,7 @@
 <script src="js/depot.js"></script>
 <script src="js/render.js"></script>
 <script src="js/game.js"></script>
+<script src="js/touch.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

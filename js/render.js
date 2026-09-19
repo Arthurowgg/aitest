@@ -30,6 +30,9 @@ DG.Render = (function () {
 
   /* ── title ──────────────────────────────────────────────────────────── */
   /* the whole shaft in one picture: a four-row core sample of every band  */
+  /* the prompt line differs between a keyboard and a pocket */
+  const finger = () => !!(DG.Touch && DG.Touch.enabled);
+
   function title(g, game) {
     const w = g.canvas.width, h = g.canvas.height;
     g.fillStyle = "#05060a";
@@ -60,14 +63,15 @@ DG.Render = (function () {
                    w / 2, 116, "#6fe0ff");
       U.textCenter(g, `drill ${DG.DRILLS[r.drillIndex || 0].name.toLowerCase()} - ${(r.drilled || []).length} cells opened`,
                    w / 2, 128, "#6b7794");
-      U.textCenter(g, "PRESS SPACE - BACK TO THE DEPOT", w / 2, 144,
-                   blink ? "#ffd35c" : "#a8842a");
+      U.textCenter(g, finger() ? "TAP TO GO BACK TO THE DEPOT" : "PRESS SPACE - BACK TO THE DEPOT",
+                   w / 2, 144, blink ? "#ffd35c" : "#a8842a");
     } else {
       U.textCenter(g, "no save file - a fresh shaft waits below", w / 2, 122, "#4a5470");
-      U.textCenter(g, "PRESS SPACE - FIRST DESCENT", w / 2, 144,
-                   blink ? "#ffd35c" : "#a8842a");
+      U.textCenter(g, finger() ? "TAP TO START THE SHIFT" : "PRESS SPACE - FIRST DESCENT",
+                   w / 2, 144, blink ? "#ffd35c" : "#a8842a");
     }
-    U.textCenter(g, "N - new shaft (erases the old one)", w / 2, 157, "#39415a");
+    U.textCenter(g, finger() ? "the deck under the glass runs the rig"
+                             : "N - new shaft (erases the old one)", w / 2, 157, "#39415a");
 
     /* the core sample: every band, four rows of rock, with its own label */
     const S = DG.STRATA, cols = S.length, cw = Math.floor(w / cols);
@@ -134,7 +138,8 @@ DG.Render = (function () {
     const vg = A("bg/vignette.png");
     if (vg) g.drawImage(vg, 0, 0, w, h);
     g.globalAlpha = 1;
-    U.textCenter(g, "hold SPACE to drill - X vent - C sonar - E ascend - ESC pause",
+    U.textCenter(g, finger() ? "hold DRILL - pads to steer - VENT - SONAR - ASCEND"
+                             : "hold SPACE to drill - X vent - C sonar - E ascend - ESC pause",
                  w / 2, h - 32, "#6b7794");
     U.textCenter(g, `every sprite forged with imagemagick - ${DG.Assets.count} files`,
                  w / 2, h - 18, "#4a5470");
@@ -153,14 +158,27 @@ DG.Render = (function () {
     U.textCenter(g, `drill ${rig.drill.name} (power ${rig.drill.power.toFixed(1)})`, w / 2, y0 + 14, "#8fa0c0");
     U.textCenter(g, `deepest ${Math.round(rig.depthRecord)} m - ${rig.kills} burrowers - ${rig.runs} descents`, w / 2, y0 + 28, "#8fa0c0");
     const yk = y0 + 48;
-    U.text(g, "ESC / SPACE", px + 20, yk, "#6fe0ff");
-    U.text(g, "resume", px + 120, yk, "#8fa0c0");
-    U.text(g, "M", px + 20, yk + 12, "#6fe0ff");
-    U.text(g, "toggle audio", px + 120, yk + 12, "#8fa0c0");
-    U.text(g, "Q", px + 20, yk + 24, "#6fe0ff");
-    U.text(g, "save & reload", px + 120, yk + 24, "#8fa0c0");
-    U.text(g, "N", px + 20, yk + 36, "#6fe0ff");
-    U.text(g, "new shaft", px + 120, yk + 36, "#8fa0c0");
+    /* this panel is a control map, so it has to speak the language of whatever
+       the player is holding */
+    if (finger()) {
+      U.text(g, "RESUME", px + 20, yk, "#6fe0ff");
+      U.text(g, "back to the console", px + 120, yk, "#8fa0c0");
+      U.text(g, "SAVE", px + 20, yk + 12, "#6fe0ff");
+      U.text(g, "bank the shift", px + 120, yk + 12, "#8fa0c0");
+      U.text(g, "NEW SHAFT", px + 20, yk + 24, "#6fe0ff");
+      U.text(g, "erase and restart", px + 120, yk + 24, "#8fa0c0");
+      U.text(g, "FULLSCREEN", px + 20, yk + 36, "#6fe0ff");
+      U.text(g, "deck header button", px + 120, yk + 36, "#8fa0c0");
+    } else {
+      U.text(g, "ESC / SPACE", px + 20, yk, "#6fe0ff");
+      U.text(g, "resume", px + 120, yk, "#8fa0c0");
+      U.text(g, "M", px + 20, yk + 12, "#6fe0ff");
+      U.text(g, "toggle audio", px + 120, yk + 12, "#8fa0c0");
+      U.text(g, "Q", px + 20, yk + 24, "#6fe0ff");
+      U.text(g, "save & reload", px + 120, yk + 24, "#8fa0c0");
+      U.text(g, "N", px + 20, yk + 36, "#6fe0ff");
+      U.text(g, "new shaft", px + 120, yk + 36, "#8fa0c0");
+    }
   }
 
   /* ── wreck ──────────────────────────────────────────────────────────── */
@@ -178,7 +196,8 @@ DG.Render = (function () {
     U.textCenter(g, `hold lost: ${rig.lastLost || 0} units of ore`, w / 2, py + 72, "#ffd35c");
     U.textCenter(g, `ore already banked is safe - drill ${rig.drill.name.toLowerCase()} survives`, w / 2, py + 92, "#6b7794");
     if (game.wreckT > 1) {
-      U.textCenter(g, "SPACE - BUILD A NEW RIG AT THE DEPOT", w / 2, py + 112,
+      U.textCenter(g, finger() ? "TAP TO BUILD A NEW RIG AT THE DEPOT"
+                               : "SPACE - BUILD A NEW RIG AT THE DEPOT", w / 2, py + 112,
                    blink ? "#7df5a8" : "#3f6b52");
     }
   }

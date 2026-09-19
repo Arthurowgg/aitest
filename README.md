@@ -30,6 +30,24 @@ python3 -m http.server 8000     # any static server will do
 # open http://localhost:8000
 ```
 
+**On a phone or tablet the game grows a deck.** Anything with a coarse pointer —
+or any device where a finger actually touches the screen — gets a modern touch
+panel under the glass: DEPTH, CREDITS and live HULL/HEAT bars, a big amber
+**DRILL** button you hold, `‹‹` / `››` steer pads that repeat while held, and
+VENT / SONAR / PATCH / PURGE / ASCEND. The deck follows the game state, so at
+the depot it becomes SELL ALL + DESCEND, on the title it becomes START SHIFT,
+and when the rig comes apart it becomes REBUILD. Every control is at least 46 px
+tall, sits above the safe-area inset, and lights up when it is not available.
+
+Portrait puts the deck under the glass; landscape moves it beside the glass so
+the picture keeps the full height. Everything is reachable with two thumbs:
+**hold DRILL with one, steer with the other**, and any finger held on the
+borehole itself drills too. Add it to your home screen (Share → *Add to Home
+Screen*) and it launches fullscreen from the generated icon — there is no
+service worker and no network call after load, so the page is the whole game.
+
+Trying it on a desktop? `?touch=1` forces the deck on, `?touch=0` hides it.
+
 | Action | Key / input |
 | --- | --- |
 | drill (hold) | `SPACE`, **hold the mouse on the borehole**, or the `HOLD TO DRILL` button |
@@ -44,7 +62,9 @@ python3 -m http.server 8000     # any static server will do
 | new shaft (erases the save) | `N` on the title or pause screen |
 
 Everything the console shows is clickable too: buttons light up on hover, the
-forge rows and hardware rows are one-click purchases.
+forge rows and hardware rows are one-click purchases. On touch, the deck below
+the glass mirrors those same commands with finger-sized targets, and the header
+button toggles fullscreen.
 
 ## The console
 
@@ -163,9 +183,10 @@ Every asset is regenerable: `bash tools/build_assets.sh`.
 ## Project layout
 
 ```
-index.html            canvas + boot screen
-style.css             page furniture (the game is 100% canvas)
-js/core.js            math, noise, input, WebAudio machine synth, storage
+index.html            canvas + boot screen + the touch deck markup
+style.css             the shell: stage, loading veil, and the responsive deck
+manifest.webmanifest  installable-app manifest (icons forged by tools/gen_icons.sh)
+js/core.js            math, noise, input (keys, mouse, multi-touch), WebAudio synth
 js/assets.js          image loader (no fetch -> also runs from file://)
 js/assetlist.js       generated manifest of every PNG
 js/well.js            the rock: strata, ore veins, hazards, sonar, as pure functions
@@ -175,7 +196,8 @@ js/console.js         the console screen: viewport, panels, controls, alerts, ti
 js/depot.js           the surface screen: ore bank, bit forge, hardware bay, winch
 js/render.js          frame dispatch + title / pause / wreck screens
 js/game.js            state machine, transitions, save/load, screen effects
-js/main.js            boot, integer canvas scaling, the fixed-step loop
+js/touch.js           the deck: pure view model + the DOM that paints it
+js/main.js            boot, responsive canvas scaling, the fixed-step loop
 assets/               290 PNGs, all generated (safe to delete and rebuild)
 tools/                the art forge + the QA harness
 ```
@@ -198,6 +220,10 @@ python3 tools/preview.py /tmp/scene.json shot.png --scale=2     # 480x288 -> 960
   2D context that throws on `drawImage(null)` or non-finite geometry. It also
   audits the **inks**: every text colour the frame prints must have a forged
   atlas, and every asset it asks for must exist.
+* `--script=touch` drives the deck exactly the way thumbs do — it presses
+  DRILL, steers with the second finger, taps VENT, holds two fingers on the
+  glass at once, and asserts that the rig does what the buttons promise. It
+  also fails the build if the page ships a `data-act` the code does not know.
 * `--script=systems` asserts the whole machine: deterministic rock, monotonic
   strata heat, strictly stronger bits, forge gating and consumption, drilling
   and descent, cargo caps, hazard damage, venting, sustained overheat damage,
@@ -213,12 +239,31 @@ python3 tools/preview.py /tmp/scene.json shot.png --scale=2     # 480x288 -> 960
   all — so screenshots need neither a browser nor an image library.
 * `tools/preview.py` wraps it, with `--scale=N` for the README shots.
 
+## Deploy
+
+`.github/workflows/pages.yml` publishes the game to GitHub Pages: it stages
+`index.html`, `style.css`, `manifest.webmanifest`, the four icons, `js/` and
+`assets/` into a ~1.9 MB artifact and hands that folder to Pages — no build
+step, no bundler, nothing to invalidate.
+
+Pages itself is a one-time repository switch: **Settings → Pages → Build and
+deployment → Source: GitHub Actions** (<https://github.com/Arthurowgg/aitest/settings/pages>).
+Until it is flipped the workflow does not fail — it writes the link into its
+run summary and skips the deploy — and after it is flipped every push to
+`main` (or to the build branch) publishes the game at
+<https://arthurowgg.github.io/aitest/>.
+
+Everything uses relative paths, so it works unchanged from a project subpath,
+and `python3 -m http.server` is all you need locally.
+
 ## Performance notes
 
 * 480×288 internal canvas, integer-scaled up with `image-rendering: pixelated`.
 * ~900–1300 canvas calls per frame (see any `headless.js` run) — only the cells
   inside the glass are drawn, and the rock is cached per frame.
-* Assets are ~1.2 MB total (290 PNGs, 16×16-ish).
+* Assets are ~1.2 MB total (290 PNGs, 16×16-ish); the deployed site is ~1.9 MB.
+* The touch deck repaints at 15 Hz through a diffs-only view model, and only
+  ever touches the DOM when a chip, bar or button actually changes.
 * Fixed 1/60 s timestep with an accumulator, max 6 catch-up steps per frame.
 
 ## Licence

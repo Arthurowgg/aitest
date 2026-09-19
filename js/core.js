@@ -61,10 +61,25 @@ const Input = (DG.Input = {
   anyKey: false,
   lastDevice: "kb",
   touchButtons: [],
+  pointers: 0,                         // how many fingers are on the glass
+  /* held controls: the keyboard writes through the same flags the touch deck
+     does, so a phone can drill and steer at the same time and the game never
+     has to care which one it was */
+  hold: { drill: false, left: false, right: false },
 
   key(code) { return !!this.keys[code]; },
   hit(code) { const v = !!this.pressed[code]; this.pressed[code] = false; return v; },
-  clear() { this.pressed = Object.create(null); this.clicked = false; this.released = false; },
+  clear() {
+    this.pressed = Object.create(null);
+    this.clicked = false;
+    this.released = false;
+  },
+  releaseAll() {
+    this.hold.drill = this.hold.left = this.hold.right = false;
+    this.keys = Object.create(null);
+    this.down = false;
+    this.pointers = 0;
+  },
 });
 
 DG.initInput = function (canvas) {
@@ -86,41 +101,87 @@ DG.initInput = function (canvas) {
     DG.Audio.unlock();
   });
   addEventListener("keyup", (e) => { I.keys[e.code] = false; });
-  addEventListener("blur", () => { I.keys = Object.create(null); I.down = false; });
+  addEventListener("blur", () => { I.releaseAll(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) I.releaseAll();    /* no stuck drill when you tab away */
+  });
 
-  const down = (e) => {
+  const down = (e, p) => {
     e.preventDefault();
-    const p = e.touches ? e.touches[0] || e.changedTouches[0] : e;
-    toGame(p.clientX, p.clientY);
+    const t = p || (e.touches ? e.touches[0] || e.changedTouches[0] : e);
+    toGame(t.clientX, t.clientY);
     I.down = true;
     I.clicked = true;
     I.inside = true;
     DG.Audio.unlock();
   };
-  const move = (e) => {
-    const p = e.touches ? e.touches[0] || e.changedTouches[0] : e;
-    toGame(p.clientX, p.clientY);
+  const move = (e, p) => {
+    const t = p || (e.touches ? e.touches[0] || e.changedTouches[0] : e);
+    toGame(t.clientX, t.clientY);
     I.inside = true;
   };
-  const up = (e) => {
+
+  canvas.addEventListener("mousedown", (e) => { I.lastDevice = "mouse"; down(e); });
+  canvas.addEventListener("mousemove", (e) => { if (I.lastDevice !== "touch") I.lastDevice = "mouse"; move(e); });
+  addEventListener("mouseup", () => {
     I.down = false;
     I.released = true;
-    if (e.touches && e.touches.length) {
-      const p = e.touches[0];
-      toGame(p.clientX, p.clientY);
-    }
-  };
-
-  canvas.addEventListener("mousedown", down);
-  canvas.addEventListener("mousemove", (e) => { I.lastDevice = "kb"; move(e); });
-  addEventListener("mouseup", up);
+  });
   canvas.addEventListener("mouseleave", () => { I.inside = false; });
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
-  canvas.addEventListener("touchstart", (e) => { I.lastDevice = "touch"; down(e); }, { passive: false });
-  canvas.addEventListener("touchmove", (e) => { e.preventDefault(); move(e); }, { passive: false });
-  canvas.addEventListener("touchend", (e) => { e.preventDefault(); up(e); }, { passive: false });
-  canvas.addEventListener("touchcancel", (e) => { e.preventDefault(); up(e); }, { passive: false });
+  /* ── touch: every finger on the glass is tracked ─────────────────────────
+     One finger can hold the rig down while another steers on the deck below:
+     the deck owns its own elements, the glass just counts pointers, and the
+     pointer position follows whichever finger moved last. */
+  const live = new Map();
+  const touchStart = (e) => {
+    e.preventDefault();
+    I.lastDevice = "touch";
+    for (const t of e.changedTouches) live.set(t.identifier, t);
+    I.pointers = live.size;
+    const first = e.changedTouches[0];
+    down(e, first);
+  };
+  const touchMove = (e) => {
+    e.preventDefault();
+    for (const t of e.changedTouches) live.set(t.identifier, t);
+    I.pointers = live.size;
+    move(e, e.changedTouches[0]);
+  };
+  const touchEnd = (e) => {
+    e.preventDefault();
+    for (const t of e.changedTouches) live.delete(t.identifier);
+    I.pointers = live.size;
+    if (I.pointers === 0) {
+      I.down = false;
+      I.released = true;
+      I.mx = -99; I.my = -99;          /* nothing is hovering a phantom finger */
+    } else {
+      const last = [...live.values()].pop();
+      move(e, last);
+    }
+  };
+
+  canvas.addEventListener("touchstart", touchStart, { passive: false });
+  canvas.addEventListener("touchmove", touchMove, { passive: false });
+  canvas.addEventListener("touchend", touchEnd, { passive: false });
+  canvas.addEventListener("touchcancel", touchEnd, { passive: false });
+
+  /* ── pointer events, when the browser has them: one path for pen and touch,
+        and a pen/mouse still behaves exactly like a mouse ───────────────── */
+  if (typeof window !== "undefined" && window.PointerEvent) {
+    canvas.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "touch") return;         /* touch is handled above */
+      I.lastDevice = e.pointerType === "pen" ? "pen" : "mouse";
+      down(e);
+    });
+  }
+
+  /* a rumble in the pocket when the rig comes apart */
+  DG.Input.rumble = (pattern) => {
+    try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) {}
+  };
 };
 
 /* ── procedural audio: everything is synthesised, no sound files ─────────── */
