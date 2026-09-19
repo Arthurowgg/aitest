@@ -259,10 +259,14 @@ python3 tools/preview.py /tmp/scene.json shot.png --scale=2     # 480x288 -> 960
    * as a mirror of the same folder on the `gh-pages` branch, which is what
      *Source: Deploy from a branch* serves.
 
-Whichever source the repository is set to, one of the two lands the site, so
-there is no repository setting that has to be flipped for a push to publish —
-and if Pages is switched off entirely the run says so in its summary instead of
-failing silently. The game lives at <https://arthurowgg.github.io/aitest/>.
+Whichever source the repository is set to, the push lands the site — and if
+Pages has never been switched on at all, the run still writes the `gh-pages`
+branch and says in its summary exactly which dropdown is left.
+
+* GitHub Pages: <https://arthurowgg.github.io/aitest/> (once the repository's
+  Pages source is set — the workflow prints the current state on every run)
+* the same build straight off the `gh-pages` branch, which needs no setting at
+  all: <https://cdn.jsdelivr.net/gh/Arthurowgg/aitest@gh-pages/index.html>
 
 Everything uses relative paths, so it works unchanged from a project subpath,
 and `python3 -m http.server` is all you need locally.
