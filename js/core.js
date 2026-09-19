@@ -49,23 +49,33 @@ function fbm(x, y, seed, oct = 3, lac = 2, gain = 0.5) {
   return sum / norm;
 }
 
-/* ── input ───────────────────────────────────────────────────────────────── */
+/* ── input: pointer, keyboard, touch — everything is a button press ─────── */
 const Input = (DG.Input = {
   keys: Object.create(null),
-  pressed: Object.create(null),      // consumed once per frame
-  mouse: { x: 240, y: 144, down: false, right: false, inside: false },
-  touch: { active: false, moveId: -1, aimId: -1, mx: 0, my: 0, ax: 0, ay: 0,
-           mine: false, jump: false, bomb: false, buttons: [] },
+  pressed: Object.create(null),        // consumed once per tick
+  mx: 240, my: 144,                    // pointer in canvas space
+  down: false,                         // pointer held
+  clicked: false,                      // pointer went down this tick
+  released: false,
+  inside: false,
   anyKey: false,
   lastDevice: "kb",
+  touchButtons: [],
 
   key(code) { return !!this.keys[code]; },
   hit(code) { const v = !!this.pressed[code]; this.pressed[code] = false; return v; },
-  clear() { this.pressed = Object.create(null); },
+  clear() { this.pressed = Object.create(null); this.clicked = false; this.released = false; },
 });
 
 DG.initInput = function (canvas) {
   const I = Input;
+
+  const toGame = (cx, cy) => {
+    const r = canvas.getBoundingClientRect();
+    I.mx = ((cx - r.left) / r.width) * canvas.width;
+    I.my = ((cy - r.top) / r.height) * canvas.height;
+  };
+
   addEventListener("keydown", (e) => {
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "Tab"].includes(e.code))
       e.preventDefault();
@@ -76,91 +86,41 @@ DG.initInput = function (canvas) {
     DG.Audio.unlock();
   });
   addEventListener("keyup", (e) => { I.keys[e.code] = false; });
-  addEventListener("blur", () => { I.keys = Object.create(null); I.mouse.down = false; });
+  addEventListener("blur", () => { I.keys = Object.create(null); I.down = false; });
 
-  const toGame = (cx, cy) => {
-    const r = canvas.getBoundingClientRect();
-    I.mouse.x = ((cx - r.left) / r.width) * canvas.width;
-    I.mouse.y = ((cy - r.top) / r.height) * canvas.height;
-  };
-  canvas.addEventListener("mousemove", (e) => { toGame(e.clientX, e.clientY); I.mouse.inside = true; });
-  canvas.addEventListener("mouseleave", () => { I.mouse.inside = false; });
-  canvas.addEventListener("mousedown", (e) => {
+  const down = (e) => {
     e.preventDefault();
-    toGame(e.clientX, e.clientY);
-    if (e.button === 0) I.mouse.down = true;
-    if (e.button === 2) I.mouse.right = true;
+    const p = e.touches ? e.touches[0] || e.changedTouches[0] : e;
+    toGame(p.clientX, p.clientY);
+    I.down = true;
+    I.clicked = true;
+    I.inside = true;
     DG.Audio.unlock();
-  });
-  addEventListener("mouseup", (e) => {
-    if (e.button === 0) I.mouse.down = false;
-    if (e.button === 2) I.mouse.right = false;
-  });
+  };
+  const move = (e) => {
+    const p = e.touches ? e.touches[0] || e.changedTouches[0] : e;
+    toGame(p.clientX, p.clientY);
+    I.inside = true;
+  };
+  const up = (e) => {
+    I.down = false;
+    I.released = true;
+    if (e.touches && e.touches.length) {
+      const p = e.touches[0];
+      toGame(p.clientX, p.clientY);
+    }
+  };
+
+  canvas.addEventListener("mousedown", down);
+  canvas.addEventListener("mousemove", (e) => { I.lastDevice = "kb"; move(e); });
+  addEventListener("mouseup", up);
+  canvas.addEventListener("mouseleave", () => { I.inside = false; });
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
-  /* ── touch: left half steers, right half aims & mines ─────────────────── */
-  const relays = (e) => {
-    const r = canvas.getBoundingClientRect();
-    const tx = (e.clientX - r.left) / r.width * canvas.width;
-    const ty = (e.clientY - r.top) / r.height * canvas.height;
-    return [tx, ty];
-  };
-  canvas.addEventListener("touchstart", (e) => {
-    e.preventDefault();
-    I.lastDevice = "touch";
-    I.touch.active = true;
-    DG.Audio.unlock();
-    for (const t of e.changedTouches) {
-      const [x, y] = relays(t);
-      // on-screen buttons first
-      for (const b of I.touch.buttons) {
-        if (x > b.x && x < b.x + b.w && y > b.y && y < b.y + b.h) { b.down = true; b.owner = t.identifier; b.onPress && b.onPress(); continue; }
-      }
-      if (x < canvas.width * 0.42 && I.touch.moveId < 0) {
-        I.touch.moveId = t.identifier; I.touch.mx = x; I.touch.my = y;
-      } else if (I.touch.aimId < 0) {
-        I.touch.aimId = t.identifier; I.touch.ax = x; I.touch.ay = y;
-        I.mouse.x = x; I.mouse.y = y; I.mouse.down = true;
-      }
-    }
-  }, { passive: false });
-  canvas.addEventListener("touchmove", (e) => {
-    e.preventDefault();
-    for (const t of e.changedTouches) {
-      const [x, y] = relays(t);
-      if (t.identifier === I.touch.moveId) { I.touch.mx = x; I.touch.my = y; }
-      else if (t.identifier === I.touch.aimId) {
-        I.touch.ax = x; I.touch.ay = y; I.mouse.x = x; I.mouse.y = y;
-      }
-      for (const b of I.touch.buttons)
-        if (b.owner === t.identifier && !(x > b.x - 6 && x < b.x + b.w + 6 && y > b.y - 6 && y < b.y + b.h + 6)) {
-          b.down = false; b.owner = -1;
-        }
-    }
-  }, { passive: false });
-  const endTouch = (e) => {
-    for (const t of e.changedTouches) {
-      if (t.identifier === I.touch.moveId) I.touch.moveId = -1;
-      if (t.identifier === I.touch.aimId) { I.touch.aimId = -1; I.mouse.down = false; }
-      for (const b of I.touch.buttons)
-        if (b.owner === t.identifier) { b.down = false; b.owner = -1; }
-    }
-  };
-  canvas.addEventListener("touchend", endTouch, { passive: false });
-  canvas.addEventListener("touchcancel", endTouch, { passive: false });
-};
-
-/* movement vector from keyboard or left stick */
-DG.moveAxis = function () {
-  const k = Input.keys;
-  let x = 0;
-  if (k.ArrowLeft || k.KeyA) x -= 1;
-  if (k.ArrowRight || k.KeyD) x += 1;
-  if (Input.touch.active && Input.touch.moveId >= 0) {
-    const dx = Input.touch.mx - 90;
-    if (Math.abs(dx) > 12) x = clamp(dx / 40, -1, 1);
-  }
-  return x;
+  canvas.addEventListener("touchstart", (e) => { I.lastDevice = "touch"; down(e); }, { passive: false });
+  canvas.addEventListener("touchmove", (e) => { e.preventDefault(); move(e); }, { passive: false });
+  canvas.addEventListener("touchend", (e) => { e.preventDefault(); up(e); }, { passive: false });
+  canvas.addEventListener("touchcancel", (e) => { e.preventDefault(); up(e); }, { passive: false });
 };
 
 /* ── procedural audio: everything is synthesised, no sound files ─────────── */
@@ -234,24 +194,22 @@ DG.Audio = (function () {
   }
   return {
     unlock, ensure, ambience,
+    /* ── the console speaks in machines, not in swords ───────────────── */
     heartbeat() { tone(58, "sine", 0.16, 0.07, 40); },
-    get muted() { return muted; },
-    toggle() { muted = !muted; if (!muted) unlock(); return muted; },
+    click() { noise(0.03, 0.06, 2400, 3, "highpass"); tone(660, "square", 0.02, 0.02); },
     dig(hard) { noise(0.05, 0.09, hard ? 900 : 1400, 1.2, "bandpass"); tone(hard ? 160 : 240, "square", 0.035, 0.02); },
-    crack() { noise(0.18, 0.22, 700, 0.8); tone(120, "triangle", 0.12, 0.05, 60); },
+    crack(hard) { noise(0.16, 0.2, hard ? 500 : 900, 0.8); tone(hard ? 110 : 190, "triangle", 0.1, 0.05, 60); },
     pop() { tone(660, "square", 0.07, 0.05, 990); },
     coin() { tone(1180, "square", 0.06, 0.04); tone(1560, "square", 0.09, 0.03); },
-    jump() { tone(240, "square", 0.12, 0.045, 420); },
-    land() { noise(0.09, 0.13, 420, 0.7); },
-    hurt() { tone(300, "sawtooth", 0.18, 0.07, 90); noise(0.12, 0.12, 500, 0.6); },
-    swing() { noise(0.07, 0.05, 2200, 2, "highpass"); },
-    hitFx() { noise(0.1, 0.14, 300, 0.6); tone(180, "square", 0.08, 0.05, 80); },
-    die() { tone(220, "sawtooth", 0.5, 0.09, 60); noise(0.4, 0.1, 300, 0.5); },
-    boom() { noise(0.5, 0.35, 220, 0.4); tone(90, "sawtooth", 0.35, 0.12, 30); },
-    warp() { tone(500, "sine", 0.3, 0.06, 1500); tone(750, "sine", 0.35, 0.04, 2200); },
     buy() { tone(880, "square", 0.08, 0.05); tone(1320, "square", 0.12, 0.04); },
     deny() { tone(180, "square", 0.12, 0.05, 120); },
-    torch() { noise(0.06, 0.03, 1800, 1); },
+    hitFx() { noise(0.1, 0.14, 300, 0.6); tone(180, "square", 0.08, 0.05, 80); },
+    vent() { noise(1.1, 0.16, 1500, 0.6, "highpass"); },
+    winch() { tone(70, "sawtooth", 0.9, 0.05, 190); noise(0.9, 0.05, 500, 0.7); },
+    sonar() { tone(1250, "sine", 0.18, 0.05, 640); tone(640, "sine", 0.35, 0.03, 320); },
+    forge() { tone(320, "square", 0.14, 0.06, 520); setTimeout(() => tone(780, "square", 0.25, 0.05, 1180), 120); },
+    siren() { tone(720, "square", 0.25, 0.05, 380); setTimeout(() => tone(720, "square", 0.25, 0.05, 380), 260); },
+    alarm() { tone(240, "sawtooth", 0.4, 0.06, 160); noise(0.3, 0.08, 300, 0.6); },
   };
 })();
 

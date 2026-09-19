@@ -8,6 +8,8 @@ python3 gen_tiles.py
 python3 gen_sprites.py
 python3 gen_font.py
 python3 gen_ui.py
+python3 gen_ui2.py
+python3 gen_rig.py
 python3 gen_bg.py
 echo "✅ $(find ../assets -name '*.png' | wc -l) PNG files → $(du -sh ../assets | cut -f1)"
 
