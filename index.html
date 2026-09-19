@@ -35,17 +35,26 @@
   <!-- the touch deck: shown on phones and tablets, never on a desktop pointer -->
   <div id="deck" class="deck" role="group" aria-label="Rig controls">
     <div class="deck-head">
-      <div class="chip"><b>DEPTH</b><span class="v" data-v="depth">0 m</span></div>
-      <div class="chip"><b>CREDITS</b><span class="v" data-v="credits">0</span></div>
-      <div class="chip bar" data-warn="hull"><b>HULL</b><span class="track"><i data-bar="hull"></i></span><span class="v" data-v="hull">100</span></div>
-      <div class="chip bar" data-warn="heat"><b>HEAT</b><span class="track"><i data-bar="heat"></i></span><span class="v" data-v="heat">0</span></div>
+      <div class="chip"><b>DEPTH</b><span class="v" data-v="depth" aria-live="off">0 m</span></div>
+      <div class="chip"><b>CREDITS</b><span class="v" data-v="credits" aria-live="off">0</span></div>
+      <div class="chip bar" data-warn="hull"><b>HULL</b><span class="track"><i data-bar="hull"></i></span><span class="v" data-v="hull" aria-live="polite">100</span></div>
+      <div class="chip bar" data-warn="heat"><b>HEAT</b><span class="track"><i data-bar="heat"></i></span><span class="v" data-v="heat" aria-live="polite">0</span></div>
       <button class="iconbtn" data-act="pause" aria-label="Pause">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14M15 5v14"/></svg>
       </button>
       <button class="iconbtn" data-act="fullscreen" aria-label="Toggle fullscreen">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
       </button>
+      <button class="iconbtn" data-act="install" aria-label="Install DEEPDIG" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg>
+      </button>
     </div>
+
+    <!-- iOS has no install prompt, so it gets told once, in one line -->
+    <button id="ios-tip" class="tip" data-act="iosTip" hidden>
+      <b>Make it an app</b>
+      <span>Share &#8594; Add to Home Screen &middot; fullscreen, and it plays offline</span>
+    </button>
 
     <div class="deck-body">
       <!-- the console: the rig, under your thumbs -->

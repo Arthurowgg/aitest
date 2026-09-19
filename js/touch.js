@@ -28,6 +28,9 @@ DG.Touch = (function () {
     try { q = String((typeof location !== "undefined" && location.search) || ""); } catch (e) {}
     if (/[?&]touch=1\b/.test(q)) return true;
     if (/[?&]touch=0\b/.test(q)) return false;
+    /* an embedded frame is usually a preview panel on a desktop, and that is
+       exactly where someone wants to look at — and click — the phone deck */
+    try { if (window.self !== window.top) return true; } catch (e) { return true; }
     try { if (typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches) return true; } catch (e) {}
     /* a touchscreen laptop still gets the desktop chrome — until a finger
        actually lands on it, which enable()s the deck for good */
@@ -196,11 +199,105 @@ DG.Touch = (function () {
     newshaft: { tap: (g) => { try { DG.store.clear(); } catch (e) {} g.newRun(true); g.state = "depot"; } },
     rebuild: { tap: (g) => { if (g.wreckT >= 1) g.redeploy(); } },
     fullscreen: { tap: () => toggleFullscreen() },
+    iosTip: { tap: () => { dismissTip(); return true; } },
+    install: { tap: () => { if (!installEvent) return false; install(); return true; } },
   };
 
   /* one button per DG.HARDWARE row, wired exactly like the markup ones */
   for (const item of DG.HARDWARE || [])
     ACTIONS["hw:" + item.id] = { tap: (g) => { if (g.rig.buyHardware(g, item)) g.save(); } };
+
+  /* ── installing: Android offers a prompt, iOS has its own menu ─────────── */
+  let installEvent = null;
+  function catchInstallPrompt() {
+    if (!hasDOM) return;
+    addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      installEvent = e;
+      const btn = els["btn:install"];
+      if (btn) btn.hidden = false;
+    });
+    addEventListener("appinstalled", () => {
+      installEvent = null;
+      const btn = els["btn:install"];
+      if (btn) btn.hidden = true;
+    });
+  }
+  async function install() {
+    const e = installEvent;
+    installEvent = null;
+    const btn = els["btn:install"];
+    if (btn) btn.hidden = true;              /* one prompt per visit */
+    try {
+      e.prompt();
+      const choice = await e.userChoice;
+      return !!choice && choice.outcome === "accepted";
+    } catch (err) {
+      return false;
+    }
+  }
+
+  /* ── iOS: no install prompt exists, so say it once, quietly ────────────── */
+  const TIP_KEY = "deepdig.ios.tip.v1";
+  function isIos() {
+    try {
+      const ua = navigator.userAgent || "";
+      const plat = navigator.platform || "";
+      const ipad = /Mac/.test(plat) && navigator.maxTouchPoints > 1;   /* iPadOS lies */
+      return /iPhone|iPad|iPod/.test(ua) || /iP(hone|ad|od)/.test(plat) || ipad;
+    } catch (e) { return false; }
+  }
+  function isStandalone() {
+    try {
+      return (typeof matchMedia === "function" && matchMedia("(display-mode: standalone)").matches) ||
+             navigator.standalone === true;
+    } catch (e) { return false; }
+  }
+  function tipSeen() {
+    try { return localStorage.getItem(TIP_KEY) === "1"; } catch (e) { return true; }
+  }
+  function iosTipWanted() { return isIos() && !isStandalone() && !tipSeen(); }
+  function dismissTip() {
+    try { localStorage.setItem(TIP_KEY, "1"); } catch (e) {}
+    const el = els["btn:iosTip"];
+    if (el) el.hidden = true;
+  }
+
+  /* ── the screen stays lit while the rig is working ─────────────────────── */
+  let wakeLock = null, wakeWanted = false, wakeState = "";
+  async function applyWake() {
+    try {
+      if (!("wakeLock" in navigator)) return;
+      const visible = (typeof document === "undefined" || !document.visibilityState) ||
+                      document.visibilityState !== "hidden";
+      if (wakeWanted && !wakeLock && visible) {
+        wakeLock = await navigator.wakeLock.request("screen");
+        if (wakeLock && wakeLock.addEventListener)
+          wakeLock.addEventListener("release", () => { wakeLock = null; });
+      } else if (!wakeWanted && wakeLock) {
+        const held = wakeLock;
+        wakeLock = null;
+        await held.release();
+      }
+    } catch (e) { wakeLock = null; }
+  }
+  /* called from the frame loop: only work that changes does any work */
+  function wakeFor(state) {
+    const wanted = state === "console" || state === "depot";
+    if (wanted === wakeWanted && state === wakeState) return;
+    wakeWanted = wanted;
+    wakeState = state;
+    applyWake();
+  }
+
+  /* iOS ignores user-scalable=no: stop pinch-zoom and double-tap zoom itself */
+  function guardGestures() {
+    if (!hasDOM) return;
+    const stop = (e) => { if (e && e.preventDefault) e.preventDefault(); };
+    for (const t of ["gesturestart", "gesturechange", "gestureend"])
+      document.addEventListener(t, stop, { passive: false });
+    document.addEventListener("dblclick", stop, { passive: false });
+  }
 
   function startRun(game) {
     const has = !!DG.store.load();
@@ -218,7 +315,7 @@ DG.Touch = (function () {
     const st = model(game).btn[id];
     if (st && st.disabled) return false;
     if (a.hold) return setHold(a.hold, true, game);
-    if (a.tap) { a.tap(game); return true; }
+    if (a.tap) { const r = a.tap(game); return r === undefined ? true : !!r; }
     return false;
   }
 
@@ -295,7 +392,7 @@ DG.Touch = (function () {
       try { DG.Audio.unlock(); } catch (err) {}
       btn.classList.add("down");
       if (a.hold) setHold(a.hold, true, DG.game);
-      else if (a.tap) a.tap(DG.game);
+      else if (a.tap) { buzz(8); a.tap(DG.game); }
     };
     const up = (e) => {
       if (e && e.preventDefault) e.preventDefault();
@@ -348,6 +445,11 @@ DG.Touch = (function () {
 
     for (const btn of deckEl.querySelectorAll("[data-act]")) wireButton(btn);
     buildHardware();
+    catchInstallPrompt();
+    guardGestures();
+    if (els["btn:iosTip"]) els["btn:iosTip"].hidden = !iosTipWanted();
+    if (els["btn:install"]) els["btn:install"].hidden = true;
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) applyWake(); });
 
 
 
@@ -366,12 +468,15 @@ DG.Touch = (function () {
   }
 
   function sync(game) {
-    if (!deckEl || !game) return;
+    if (!game) return;
+    wakeFor(game.state);
+    if (!deckEl) return;
     paint(model(game));
   }
 
   return {
     boot, enable, sync, model, act, setHold, releaseHold, fitScale, toggleFullscreen, detect,
+    install, wakeFor, iosTipWanted,
     get enabled() { return enabled; },
     set enabled(v) { if (v) enable(); else { enabled = false; } },
     get hasDOM() { return hasDOM; },

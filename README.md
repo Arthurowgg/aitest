@@ -44,11 +44,23 @@ safe-area inset, and greys itself out when the console would refuse it.
 Portrait puts the deck under the glass; landscape moves it beside the glass so
 the picture keeps the full height. Everything is reachable with two thumbs:
 **hold DRILL with one, steer with the other**, and any finger held on the
-borehole itself drills too. Add it to your home screen (Share → *Add to Home
-Screen*) and it launches fullscreen from the generated icon — there is no
-service worker and no network call after load, so the page is the whole game.
+borehole itself drills too — the glass tracks every finger, so a thumb can keep
+drilling while another raises the winch.
 
-Trying it on a desktop? `?touch=1` forces the deck on, `?touch=0` hides it.
+The rest of the phone kit:
+
+| | |
+| --- | --- |
+| **Installable** | `manifest.webmanifest` + four ImageMagick-forged icons; Android gets an install button in the deck header, iOS gets a one-line *Share → Add to Home Screen* tip that retires itself. Launches fullscreen, no browser bars. |
+| **Offline** | `sw.js` precaches the shell and runtime-caches `assets/` stale-while-revalidate, so a second visit plays with no signal at all. Navigations stay network-first, so a fresh deploy is never hidden behind a cache. |
+| **Awake** | the screen wake lock is held while the console or the depot is up, and released the moment the shift stops or the phone sleeps. |
+| **Gesture-hardened** | pinch-zoom, double-tap zoom, pull-to-refresh and the rubber-band scroll are all off; `viewport-fit=cover` plus `env(safe-area-inset-*)` keep the deck clear of the notch and the home bar. |
+| **Haptic** | a short buzz on every button, and a longer one when the rig comes apart. |
+| **Graceful** | every optional API (wake lock, vibrate, install prompt, fullscreen) is feature-detected, so a browser without them still plays. |
+
+Trying it on a desktop? `?touch=1` forces the deck on, `?touch=0` hides it —
+and any embedded preview frame gets the deck automatically, so the phone UI can
+be poked at with a mouse.
 
 | Action | Key / input |
 | --- | --- |
@@ -199,7 +211,8 @@ js/depot.js           the surface screen: ore bank, bit forge, hardware bay, win
 js/render.js          frame dispatch + title / pause / wreck screens
 js/game.js            state machine, transitions, save/load, screen effects
 js/touch.js           the deck: pure view model + the DOM that paints it
-js/main.js            boot, responsive canvas scaling, the fixed-step loop
+js/main.js            boot, responsive canvas scaling, the fixed-step loop, sw registration
+sw.js                 the offline shell: precache the page, runtime-cache the art
 assets/               290 PNGs, all generated (safe to delete and rebuild)
 tools/                the art forge + the QA harness
 .github/workflows/    QA gate + the two-way GitHub Pages publish
@@ -239,6 +252,9 @@ python3 tools/preview.py /tmp/scene.json shot.png --scale=2     # 480x288 -> 960
   seconds a given bit needs on a cell at 400 m and 1800 m — the tuning table.
 * The harness reads the script order straight out of `index.html`, so a
   load-order mistake cannot hide from the tests.
+* `tools/test.sh` also holds the **phone kit** in place: the manifest, the icons,
+  the viewport, every deck control, the responsive CSS and the service worker's
+  precache list are all asserted to match what `index.html` actually loads.
 * `tools/replay.py` is a dependency-free PNG engine (decoder *and* encoder) that
   rasterises the recorded frame — transforms, clips, alpha, mirrored tiles and
   all — so screenshots need neither a browser nor an image library.

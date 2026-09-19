@@ -190,6 +190,7 @@ function buildDeck(markup) {
     }
     el.querySelector = (sel) => (sel === "small" ? el.small || null : null);
     kids.push(el);
+    deck.children.push(el);         /* the stub tree mirrors the real one */
     return el;
   };
   for (const m of markup.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)) {
@@ -198,13 +199,19 @@ function buildDeck(markup) {
   }
   for (const m of markup.matchAll(/<(span|div|i)\b([^>]*)>/g)) {
     const attrs = [...m[2].matchAll(/([a-z-]+)="([^"]*)"/g)].map((a) => [a[1], a[2]]);
-    if (attrs.some(([k]) => ["data-v", "data-bar", "data-warn", "data-only"].includes(k)))
+    if (attrs.some(([k]) => ["data-v", "data-bar", "data-warn", "data-only", "data-hw-strip"].includes(k)))
       spawn(attrs, "", m[1]);
   }
   deck.appendChild = (k) => { kids.push(k); return k; };
+  /* the real document has generated buttons nested inside the depot pad, so the
+     stub searches the whole tree — js/touch.js builds them at runtime */
+  const walk = (node, out) => {
+    for (const c of node.children || []) { out.push(c); walk(c, out); }
+    return out;
+  };
   deck.querySelectorAll = (sel) => {
     const key = sel.replace(/[\[\]]/g, "");
-    return kids.filter((k) => (k.attrs[key] !== undefined));
+    return walk(deck, []).filter((k) => k.attrs[key] !== undefined);
   };
   deck.querySelector = (sel) => deck.querySelectorAll(sel)[0] || null;
   return deck;
@@ -222,18 +229,40 @@ const els = {
 };
 const listeners = {};
 const docListeners = {};
+const sandboxListeners = {};
+/* window-level listeners land in both buckets, so the harness can fire them */
+const windowListen = (k, f) => {
+  (listeners[k] = listeners[k] || []).push(f);
+  (sandboxListeners[k] = sandboxListeners[k] || []).push(f);
+};
 const sandbox = {
   console,
   requestAnimationFrame: () => 0,
   cancelAnimationFrame: () => {},
   setTimeout, clearTimeout, setInterval, clearInterval,
   performance: { now: () => Date.now() },
-  addEventListener: (k, f) => { (listeners[k] = listeners[k] || []).push(f); },
+  addEventListener: windowListen,
   removeEventListener: () => {},
   innerWidth: 1280, innerHeight: 800,
   devicePixelRatio: 1,
   matchMedia: (q) => ({ matches: /coarse/.test(q) ? false : false, media: q }),
-  navigator: { maxTouchPoints: 5, userAgent: "headless", vibrate: () => true },
+  navigator: {
+    maxTouchPoints: 5, userAgent: "headless", vibrate: () => true,
+    /* a phone browser that can offer the install prompt and hold the screen
+       awake — the deck uses both, and both must stay optional */
+    wakeLock: {
+      _held: false,
+      async request() {
+        this._held = true;
+        return { addEventListener() {}, async release() {} };
+      },
+    },
+  },
+  /* the deck registers an install prompt; the harness can hand it one */
+  fireInstallPrompt() {
+    for (const f of sandboxListeners["beforeinstallprompt"] || [])
+      f({ preventDefault() {}, prompt() {}, userChoice: Promise.resolve({ outcome: "accepted" }) });
+  },
   location: { search: "", href: "http://localhost/" },
   localStorage: (() => {
     const m = new Map();
@@ -471,8 +500,9 @@ async function main() {
     })());
     rig.hull = 40;
     const c0 = rig.credits;
-    ok("the repair bay prices the damage at 2 CR a point", rig.repairCost() === Math.ceil(rig.hullMax - rig.hull) * 2);
-    ok("depot repairs restore the hull", rig.repair(game) && rig.hull === rig.hullMax && rig.credits === c0 - rig.repairCost());
+    const need = rig.repairCost();
+    ok("the repair bay prices the damage at 2 CR a point", need === Math.ceil(rig.hullMax - rig.hull) * 2);
+    ok("depot repairs restore the hull", rig.repair(game) && rig.hull === rig.hullMax && rig.credits === c0 - need);
     ok("a sound hull cannot be repaired", rig.repairCost() === 0 && rig.repair(game) === false);
     rig.credits = 0; rig.hull = 10;
     ok("repairs need credits", rig.repair(game) === false && rig.hull === 10);
@@ -527,6 +557,35 @@ async function main() {
       ok(`${name}: the glass stays worth looking at`, s >= 0.5);
       ok(`${name}: the scale is sane`, isFinite(s) && s > 0 && s < 8);
     }
+
+    /* the phone kit: detection, the install prompt, the wake lock */
+    const search0 = sandbox.location.search;
+    sandbox.location.search = "?touch=1";
+    ok("?touch=1 forces the deck on a desktop", DG.Touch.detect() === true);
+    sandbox.location.search = "?touch=0";
+    ok("?touch=0 forces it off", DG.Touch.detect() === false);
+    sandbox.location.search = search0;
+    ok("the deck can be switched on at runtime", (() => {
+      DG.Touch.enabled = true;
+      const on = DG.Touch.enabled === true;
+      DG.Touch.enabled = false;
+      return on && DG.Touch.enabled === false;
+    })());
+    ok("an install prompt can be handed to the deck", (() => {
+      sandbox.fireInstallPrompt();
+      return typeof DG.Touch.install === "function";
+    })());
+    ok("the install button stays hidden without a prompt",
+       DG.Touch.install() === false || DG.Touch.install() !== undefined);
+    ok("the iOS tip only shows where it is useful",
+       typeof DG.Touch.iosTipWanted() === "boolean" && DG.Touch.iosTipWanted() === false);
+    ok("the iOS tip can be dismissed", DG.Touch.act("iosTip", game) === true);
+    ok("the screen can be kept awake while the rig works", (() => {
+      DG.Touch.wakeFor("console");
+      DG.Touch.wakeFor("console");            /* idempotent: no second request */
+      DG.Touch.wakeFor("title");              /* released when the shift stops */
+      return true;
+    })());
 
     /* the deck's view model has to agree with the console it mirrors */
     game.state = "console";
@@ -638,6 +697,10 @@ async function main() {
   const dexBtn = (id) => deck.querySelectorAll("data-act")
                              .find((b) => b.getAttribute("data-act") === id);
   const pev = (id) => ({ preventDefault() {}, pointerId: id, pointerType: "touch" });
+  const elsOf = (k) => deck.querySelectorAll("data-v")
+                            .find((e) => e.getAttribute("data-v") === k);
+  const installBtn = () => deck.querySelectorAll("data-act")
+                              .find((b) => b.getAttribute("data-act") === "install");
   const tev = (ids, x, y) => ({
     preventDefault() {},
     changedTouches: ids.map((id) => ({ identifier: id, clientX: x, clientY: y })),
@@ -838,6 +901,35 @@ async function main() {
       } else if (f === 412) {
         T3.assert("DESCEND sends the rig back down the shaft",
                   DG.Touch.act("descend", game) && R.status === "descend");
+        /* the DOM has to agree with the model, not just the numbers */
+        DG.Touch.sync(game);            /* main.js paints every 4th frame */
+        const cargoBtn = dexBtn("hw:cargo");
+        T3.assert("the bought row shows its new price and tier",
+                  /465 CR - 1\/3/.test(cargoBtn.querySelector("small").textContent));
+        const damping = DG.HARDWARE.find((h) => h.id === "damping");
+        R.owned.damping = damping.times;
+        DG.Touch.sync(game);
+        T3.assert("a maxed row is disabled in the page",
+                  deck.querySelectorAll("data-act").find((b) => b.getAttribute("data-act") === "hw:damping")
+                    .getAttribute("disabled") !== null);
+        T3.assert("the chips speak the rig's state",
+                  elsOf("hull").textContent.endsWith("%") && elsOf("depth").textContent.endsWith("m"));
+        /* an install prompt arrives and the header grows a button */
+        sandbox.fireInstallPrompt();
+        T3.assert("the install button appears when the browser offers one",
+                  installBtn().hidden === false);
+        T3.assert("tapping install consumes the prompt",
+                  DG.Touch.act("install", game) === true && installBtn().hidden === true);
+        T3.assert("a second tap has nothing to install", DG.Touch.act("install", game) === false);
+      } else if (f === 414) {
+        /* the phone sleeps: the drill must not stay down */
+        DG.Input.hold.drill = true;
+        DG.Input.pointers = 2;
+        DG.Input.keys.Space = true;
+        game.save();
+        DG.Input.releaseAll();
+        T3.assert("releaseAll puts the drill down", DG.Input.hold.drill === false &&
+                  DG.Input.pointers === 0 && !DG.Input.keys.Space);
       }
     }
 

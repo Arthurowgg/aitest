@@ -51,12 +51,14 @@ jobs:
         run: |
           set -eu
           mkdir -p _site
-          for f in index.html style.css manifest.webmanifest .nojekyll \
+          for f in index.html style.css sw.js manifest.webmanifest .nojekyll \
                    icon-192.png icon-512.png apple-touch-icon.png favicon-32.png; do
             if [ ! -f "$f" ]; then echo "::error file=$f::the site is missing $f"; exit 1; fi
             cp "$f" _site/
           done
           cp -r js assets _site/
+          # the offline shell has to reach the deployed site too
+          test -f _site/sw.js
           # the QA harness, the art forge and the screenshots stay in the repo
           du -sh _site
           find _site -type f | wc -l

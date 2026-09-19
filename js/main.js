@@ -46,6 +46,14 @@
     note.textContent = notes[ni];
   }, 420);
 
+  /* ── the offline shell ───────────────────────────────────────────────── */
+  if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
+    addEventListener("load", () => {
+      navigator.serviceWorker.register("sw.js", { updateViaCache: "none" })
+        .catch(() => { /* file:// or a blocked worker: the game still runs */ });
+    });
+  }
+
   DG.Assets.loadAll((p) => {
     if (fill) fill.style.width = Math.round(p * 100) + "%";
     if (note && p > 0.99) note.textContent = "console online";
@@ -54,7 +62,13 @@
     const game = (DG.game = new DG.Game(canvas));
     if (bootEl) bootEl.classList.add("gone");
     document.body.classList.add("ready");
-    if (hint) hint.classList.remove("gone");
+    if (hint) {
+      hint.classList.remove("gone");
+      const deckOn = !!(DG.Touch && DG.Touch.enabled);
+      hint.textContent = deckOn
+        ? "hold DRILL · steer with ‹‹ ›› · anything on the deck works with a mouse too"
+        : "hold to drill · A/D steer · X vent · C sonar · E ascend · ESC pause · ?touch=1 for the phone deck";
+    }
 
     if (DG.Touch) DG.Touch.sync(game);
 
@@ -76,7 +90,8 @@
       if (steps === 0) { /* input still needs clearing on very fast frames */
         DG.Input.clear();
       }
-      /* the deck only needs 15 Hz to look alive — it animates in CSS */
+      /* the deck only needs 15 Hz to look alive — it animates in CSS.  The
+         screen wake lock rides along with the same call. */
       if (DG.Touch && (frameNo++ % 4 === 0)) DG.Touch.sync(game);
 
       const g = game.g;

@@ -54,11 +54,38 @@ node -e '
                     "sell", "forge", "repair", "descend", "start", "resume", "rebuild"])
     if (!html.includes(`data-act="${id}"`)) throw new Error("deck is missing " + id);
   if (!/data-hw-strip/.test(html)) throw new Error("the depot deck has no hardware strip");
+  if (!/data-act="install"/.test(html)) throw new Error("the deck has no install button");
+  if (!/data-act="iosTip"/.test(html)) throw new Error("the deck has no iOS install tip");
   const css = fs.readFileSync("style.css", "utf8");
   for (const bit of ["100dvh", "env(safe-area-inset-bottom)", "orientation: landscape",
-                     "prefers-reduced-motion", "--btn-h"])
+                     "prefers-reduced-motion", "--btn-h", "touch-action: manipulation",
+                     "max-width: 430px"])
     if (!css.includes(bit)) throw new Error("style.css has no " + bit);
+  if (!/aria-live/.test(html)) throw new Error("the deck readouts are not announced");
+  if (man.id !== "./" || !man.display_override) throw new Error("manifest is missing id / display_override");
   console.log("  ✓ manifest, icons, viewport, deck markup and responsive CSS all present");
+'
+
+echo "▸ offline shell (the service worker must cache exactly what the page loads)"
+node -e '
+  const fs = require("fs");
+  const sw = fs.readFileSync("sw.js", "utf8");
+  const html = fs.readFileSync("index.html", "utf8");
+  const manifest = JSON.parse(fs.readFileSync("manifest.webmanifest", "utf8"));
+  if (!/VERSION = /.test(sw)) throw new Error("sw.js has no cache VERSION to bump");
+  if (!/skipWaiting/.test(sw) || !/clients\.claim/.test(sw)) throw new Error("sw.js never takes over");
+  if (!/mode === "navigate"/.test(sw)) throw new Error("sw.js has no navigation strategy");
+  for (const m of html.matchAll(/<script src="([^"]+)"/g))
+    if (!sw.includes(m[1])) throw new Error("sw.js does not precache " + m[1]);
+  for (const f of ["index.html", "style.css", "manifest.webmanifest"])
+    if (!sw.includes(f)) throw new Error("sw.js does not precache " + f);
+  for (const i of manifest.icons)
+    if (!sw.includes(i.src)) throw new Error("sw.js does not precache the icon " + i.src);
+  const main = fs.readFileSync("js/main.js", "utf8");
+  if (!/serviceWorker.*sw\.js/s.test(main.replace(/\n/g, " "))) throw new Error("main.js never registers sw.js");
+  const list = fs.readFileSync("js/assetlist.js", "utf8");
+  if (!/assets\//.test(list)) throw new Error("assetlist looks wrong");
+  console.log("  ✓ sw.js caches the whole shell (every <script>, the icons, the page)");
 '
 node tools/headless.js --frames=420 --script=touch --seed=4 | tail -3
 
