@@ -1,14 +1,15 @@
 name: QA and publish
 
 # DEEPDIG is plain static files, so publishing means handing a folder to Pages.
-# This workflow does it two ways, because GitHub Pages has two sources and only
-# one of them can be selected per repository:
+# GitHub Pages has two sources and a repository can only select one, so this
+# workflow asks which one is configured and publishes the way that source reads:
 #
-#   * Source: GitHub Actions  -> the artifact path (upload-pages-artifact + deploy-pages)
-#   * Source: Deploy from a branch -> the mirror path (this run writes `gh-pages`)
+#   build_type=workflow -> the artifact path (upload-pages-artifact + deploy-pages)
+#   build_type=legacy   -> the mirror path (this run writes the `gh-pages` branch)
 #
-# Whichever is configured, one of the two lands the site.  Nothing here needs a
-# build step, a bundler or a dependency.
+# If Pages is switched off entirely, the mirror is still written and the run
+# says so in its summary instead of failing.  No build step, no bundler, no
+# dependencies.
 
 on:
   push:
@@ -60,26 +61,42 @@ jobs:
           du -sh _site
           find _site -type f | wc -l
 
+      - name: Which source does this repository publish from?
+        id: source
+        run: |
+          set +e
+          body=$(curl -sS \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/pages")
+          type=$(printf '%s' "$body" | python3 -c \
+            'import json,sys;print(json.load(sys.stdin).get("build_type",""))' 2>/dev/null)
+          echo "build_type=${type:-unknown}"
+          echo "type=${type:-unknown}" >> "$GITHUB_OUTPUT"
+
       - name: Configure Pages
         id: pages
+        if: steps.source.outputs.type == 'workflow'
         continue-on-error: true
         uses: actions/configure-pages@v5
         with:
           enablement: true
 
       - name: Upload the artifact
-        if: steps.pages.outcome == 'success'
+        id: upload
+        if: steps.source.outputs.type == 'workflow' && steps.pages.outcome == 'success'
+        continue-on-error: true
         uses: actions/upload-pages-artifact@v3
         with:
           path: _site
 
       - name: Deploy through the Pages API
         id: deployment
-        if: steps.pages.outcome == 'success'
+        if: steps.upload.outcome == 'success'
         continue-on-error: true
         uses: actions/deploy-pages@v4
 
-      - name: Mirror to the gh-pages branch
+      - name: Mirror the same folder to gh-pages
         id: mirror
         continue-on-error: true
         run: |
@@ -94,7 +111,8 @@ jobs:
             "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
           echo "gh-pages now carries $(git rev-parse --short HEAD)"
 
-      - name: Ask Pages to rebuild the branch (legacy source only)
+      - name: Ask Pages to rebuild the branch
+        if: steps.source.outputs.type == 'legacy'
         continue-on-error: true
         run: |
           curl -sS -X POST \
@@ -108,36 +126,41 @@ jobs:
           {
             echo "## DEEPDIG — publish report"
             echo ""
-            echo "| publishing path | result |"
+            echo "| | |"
             echo "| --- | --- |"
-            echo "| Pages API (Source: *GitHub Actions*) | ${{ steps.deployment.outcome || 'not available' }} |"
-            echo "| \`gh-pages\` mirror (Source: *Deploy from a branch*) | ${{ steps.mirror.outcome }} |"
+            echo "| Pages source configured | \`${{ steps.source.outputs.type }}\` |"
+            echo "| Pages API deploy | ${{ steps.deployment.conclusion || 'not used' }} |"
+            echo "| \`gh-pages\` mirror | ${{ steps.mirror.conclusion }} |"
             echo ""
-            if [ "${{ steps.deployment.outcome }}" = "success" ]; then
+            if [ "${{ steps.deployment.conclusion }}" = "success" ]; then
               echo "**The game is live at <$URL>**"
+            elif [ "${{ steps.source.outputs.type }}" = "legacy" ] && [ "${{ steps.mirror.conclusion }}" = "success" ]; then
+              echo "**The game is live at <$URL>** (built from the \`gh-pages\` branch)"
             else
               echo "### One switch left"
               echo ""
-              echo "GitHub Pages is not switched on for this repository, which is a"
-              echo "settings change only the owner can make. Pick either source:"
+              echo "GitHub Pages has never been switched on for this repository, and"
+              echo "that is a settings change only the owner can make. Everything else"
+              echo "is done: this run already wrote the whole site to the \`gh-pages\`"
+              echo "branch, and every push keeps it current."
               echo ""
-              echo "1. **Settings → Pages → Source: GitHub Actions** — then re-run this"
-              echo "   workflow (or push) and the artifact path publishes."
-              echo "2. **Settings → Pages → Source: Deploy from a branch → \`gh-pages\` / \`/\`**"
-              echo "   — this run has already written that branch, so the site builds as"
-              echo "   soon as the source is set."
+              echo "Pick either source at"
+              echo "<https://github.com/${{ github.repository }}/settings/pages>:"
               echo ""
-              echo "<https://github.com/${{ github.repository }}/settings/pages>"
+              echo "1. **Source: Deploy from a branch** → branch \`gh-pages\`, folder \`/\`"
+              echo "   — the site builds immediately, nothing else to do; or"
+              echo "2. **Source: GitHub Actions** — then re-run this workflow (or push)"
+              echo "   and the artifact path publishes."
               echo ""
               echo "Either way the game lands at <$URL>."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ steps.deployment.outcome }}" != "success" ]; then
-            echo "::warning title=GitHub Pages is off::Enable Settings → Pages for ${{ github.repository }}, then re-run this workflow."
+          if [ "${{ steps.deployment.conclusion }}" != "success" ] && [ "${{ steps.source.outputs.type }}" != "legacy" ]; then
+            echo "::warning title=GitHub Pages is off::Enable Settings → Pages for ${{ github.repository }} (branch gh-pages, or GitHub Actions), then re-run."
           fi
 
       - name: Did anything publish?
-        if: steps.deployment.outcome != 'success' && steps.mirror.outcome != 'success'
+        if: steps.deployment.conclusion != 'success' && steps.mirror.conclusion != 'success'
         run: |
           echo "::error title=Nothing published::both publishing paths failed"
           exit 1
