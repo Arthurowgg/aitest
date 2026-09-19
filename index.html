@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>DEEPDIG — a mining game</title>
+<meta name="description" content="DEEPDIG: dig, fight and forge seven pickaxes on your way to the core of the world.">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="assets/sprites/pick_diamond.png">
+</head>
+<body>
+<div id="stage">
+  <canvas id="screen" width="480" height="288"></canvas>
+  <div id="boot">
+    <div class="boot-inner">
+      <div class="boot-title">DEEPDIG</div>
+      <div class="boot-bar"><i id="boot-fill"></i></div>
+      <div class="boot-note" id="boot-note">warming up the lamp…</div>
+    </div>
+  </div>
+  <div id="hint">click the game to play · M for sound · ESC to pause</div>
+</div>
+
+<script src="js/assetlist.js"></script>
+<script src="js/core.js"></script>
+<script src="js/assets.js"></script>
+<script src="js/world.js"></script>
+<script src="js/entities.js"></script>
+<script src="js/render.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
