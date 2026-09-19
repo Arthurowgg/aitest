@@ -208,8 +208,33 @@ DG.Audio = (function () {
     src.connect(f); f.connect(g); g.connect(master);
     src.start(t0);
   }
+  let amb = null;
+  function startAmbience() {
+    const c = ensure(); if (!c || amb) return;
+    const o = c.createOscillator(); o.type = "sawtooth"; o.frequency.value = 41;
+    const o2 = c.createOscillator(); o2.type = "sine"; o2.frequency.value = 61.5;
+    const f = c.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = 150; f.Q.value = 2.5;
+    const g = c.createGain(); g.gain.value = 0;
+    const lfo = c.createOscillator(); lfo.frequency.value = 0.06;
+    const lg = c.createGain(); lg.gain.value = 0.008;
+    o.connect(f); o2.connect(f); f.connect(g); g.connect(master);
+    lfo.connect(lg); lg.connect(g.gain);
+    o.start(); o2.start(); lfo.start();
+    amb = { o, o2, f, g };
+  }
+  /* the mine breathes: a low drone that swells with depth */
+  function ambience(depth, active) {
+    const c = ensure(); if (!c) return;
+    startAmbience();
+    if (!amb) return;
+    const target = active && !muted ? 0.010 + Math.min(0.034, depth / 260 * 0.05) : 0;
+    amb.g.gain.setTargetAtTime(target, c.currentTime, 1.4);
+    amb.f.frequency.setTargetAtTime(120 + depth * 0.9, c.currentTime, 1.8);
+    amb.o.frequency.setTargetAtTime(38 + depth * 0.06, c.currentTime, 1.8);
+  }
   return {
-    unlock, ensure,
+    unlock, ensure, ambience,
+    heartbeat() { tone(58, "sine", 0.16, 0.07, 40); },
     get muted() { return muted; },
     toggle() { muted = !muted; if (!muted) unlock(); return muted; },
     dig(hard) { noise(0.05, 0.09, hard ? 900 : 1400, 1.2, "bandpass"); tone(hard ? 160 : 240, "square", 0.035, 0.02); },

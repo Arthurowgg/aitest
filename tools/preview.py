@@ -245,6 +245,79 @@ def main(scene_path, out_path):
     coin_txt = stamp_text(str(scene["player"]["coins"]), "#ffe9a0", "coins")
     if coin_txt:
         layers2.append((coin_txt, 16, 16))
+    if scene.get("state") == "title":
+        # title screen mock: logo + the two start lines
+        run([IM, out, "-fill", "rgba(5,4,12,0.55)", "-colorize", "55", out])
+        logo = A / "ui" / "logo.png"
+        rows = [(logo, (W - 189) / 2, 40)]
+        sub = stamp_text("a mining game", "#6b5c8f", "sub")
+        if sub:
+            rows.append((sub, (W - len("a mining game") * 7) / 2, 92))
+        pick = A / "sprites" / "pick_mythril.png"
+        if pick.exists():
+            rows.append((pick, W / 2 - 8, 118))
+        for i, line in enumerate(["SPACE - start digging", "WASD move - SPACE jump - hold CLICK to mine",
+                                  "E forge & shop - B bomb - T camp - M sound"]):
+            col = "#fff3b0" if i == 0 else "#4a4370"
+            t = stamp_text(line, col, f"t{i}")
+            if t:
+                rows.append((t, (W - len(line) * 7) / 2, 152 + i * 15))
+        composite_layers(out, rows, out_path)
+        print(f"→ {out_path} (title mock)")
+        return
+
+    if scene.get("state") == "shop":
+        shop = tmp / "09_shop.png"
+        run([IM, "-size", f"{W}x{H}", "xc:rgba(5,4,12,0.82)", shop])
+        panel = tmp / "09_panel.png"
+        run([IM, A / "ui" / "panel.png", "-resize", f"{W - 52}x{H - 48}!", panel])
+        run([IM, shop, panel, "-geometry", "+26+24", "-composite", shop])
+        rows = []
+        tiers = ["wood", "copper", "iron", "silver", "gold", "diamond", "mythril"]
+        for i, t in enumerate(tiers):
+            y = 74 + i * 22
+            box = tmp / f"09_row{i}.png"
+            run([IM, "-size", f"{W - 80}x20", "xc:rgba(58,51,88,0.8)" if i <= 1 else "xc:rgba(22,20,36,0.7)", box])
+            rows.append((box, 40, y))
+            icon = A / "ui" / f"icon_pick_{t}.png"
+            if icon.exists():
+                rows.append((icon, 45, y + 5))
+            label = ["Splinter pickaxe", "Copper pickaxe", "Iron pickaxe", "Silver pickaxe",
+                     "Gilded pickaxe", "Diamond pickaxe", "Mythril pickaxe"][i]
+            txt = stamp_text(label, "#e8e2ff" if i > 1 else "#6b5c8f", f"row{i}")
+            if txt:
+                rows.append((txt, 58, y + 3))
+            tag = "OWNED" if i == 0 else ("locked" if i > 1 else "")
+            if tag:
+                tt = stamp_text(tag, "#3ec27a" if i == 0 else "#3a3560", f"tag{i}")
+                if tt:
+                    rows.append((tt, W - 40 - len(tag) * 7 - 8, y + 7))
+            if i == 1:
+                cost = stamp_text("0/12", "#ffd35c", "cost1")
+                if cost:
+                    rows.append((cost, W - 48 - len("0/12") * 7, y + 7))
+        tabs = [("FORGE", 40, True), ("SHOP", 122, False)]
+        for name, x, hot in tabs:
+            btn = tmp / f"09_tab_{name}.png"
+            run([IM, A / "ui" / ("button_hot.png" if hot else "button.png"),
+                 "-resize", f"76x18!", btn])
+            rows.append((btn, x, 44))
+            tt = stamp_text(name, "#1a1526" if hot else "#c9b8f0", f"tab{name}")
+            if tt:
+                rows.append((tt, x + (76 - len(name) * 7) / 2, 47))
+        close = tmp / "09_close.png"
+        run([IM, A / "ui" / "button.png", "-resize", "92x18!", close])
+        rows.append((close, W - 128, 44))
+        ct = stamp_text("CLOSE (TAB)", "#c9b8f0", "close")
+        if ct:
+            rows.append((ct, W - 128 + (92 - len("CLOSE (TAB)") * 7) / 2, 47))
+        title = stamp_text("THE FORGE", "#ffd35c", "title")
+        if title:
+            rows.append((title, 40, 28))
+        composite_layers(shop, rows, out_path)
+        print(f"→ {out_path} (shop mock)")
+        return
+
     composite_layers(out, layers2, out_path)
     print(f"→ {out_path}")
 

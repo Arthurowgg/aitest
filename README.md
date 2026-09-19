@@ -20,6 +20,14 @@ pickaxes, ores and furniture are hand-placed pixel maps. See
     ╚═════╝ ╚══════╝╚══════╝╚═╝     ╚═════╝ ╚═╝ ╚═════╝
 ```
 
+| | |
+| --- | --- |
+| ![title](screenshots/title.png) | ![the mine](screenshots/mine.png) |
+| ![the forge](screenshots/forge.png) | ![the deeps](screenshots/deep.png) |
+
+*Real frames — produced by `tools/test.sh` / `tools/preview.py`, which run the
+actual game code and composite the frame through ImageMagick.*
+
 ## Play
 
 ```bash
@@ -131,8 +139,10 @@ No browser is available in the build sandbox, so the game is tested headlessly
 against a stubbed DOM/canvas:
 
 ```bash
-node tools/headless.js --frames=2400 --script=mine           # simulate play
-node tools/headless.js --script=systems                      # assert every mechanic
+bash tools/test.sh                                            # the whole suite
+node tools/headless.js --frames=2400 --script=mine            # simulate play
+node tools/headless.js --script=systems                       # assert every mechanic
+node tools/headless.js --frames=360 --script=sweep            # every asset must resolve
 node tools/headless.js --frames=1800 --script=mine --out=/tmp/scene.json
 python3 tools/preview.py /tmp/scene.json /tmp/shot.png        # ImageMagick screenshot
 ```
@@ -142,7 +152,13 @@ python3 tools/preview.py /tmp/scene.json /tmp/shot.png        # ImageMagick scre
   assets and broken draw calls that a screenshot would hide.
 * `--script=systems` is an assertion suite: breaking every rock type, ore tier
   gating, forging all seven pickaxes, the shop, bombs, monster damage, fall
-  damage, warp, rendering all four menu states, and save/reload.
+  damage, lethal damage and revive, warp, the bedrock floor, rendering all four
+  menu states, and save/reload.
+* `--script=sweep` force-draws every tile id, monster, drop, particle kind and
+  every menu — then asserts that each sprite the frame asked for actually
+  exists (this is how the missing bat sprite was caught).
+* The harness reads the script order straight out of `index.html`, so a
+  load-order mistake cannot hide from the tests.
 * `tools/preview.py` composits a dumped scene with the same strata, parallax,
   lamp-falloff and vignette rules the canvas renderer uses — a faithful
   screenshot of the frame for visual QA.

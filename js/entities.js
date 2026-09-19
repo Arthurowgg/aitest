@@ -8,12 +8,12 @@ const GRAV = 620, MAX_FALL = 430;
 /* ── pickaxes: the whole tech tree ─────────────────────────────────────── */
 DG.PICKS = [
   { id: "wood",    name: "Splinter", power: 1,  speed: 1.00, reach: 2.6, cost: {}, boots: 0 },
-  { id: "copper",  name: "Copper",   power: 2,  speed: 1.35, reach: 2.8, cost: { copper: 10 } },
-  { id: "iron",    name: "Iron",     power: 3,  speed: 1.70, reach: 3.0, cost: { iron: 18 } },
-  { id: "silver",  name: "Silver",   power: 4,  speed: 2.10, reach: 3.2, cost: { silver: 26 } },
-  { id: "gold",    name: "Gilded",   power: 6,  speed: 2.90, reach: 3.5, cost: { gold: 20, ruby: 10 } },
-  { id: "diamond", name: "Diamond",  power: 8,  speed: 3.60, reach: 3.8, cost: { diamond: 24 } },
-  { id: "mythril", name: "Mythril",  power: 11, speed: 4.40, reach: 4.2, cost: { mythril: 22, coreium: 8 } },
+  { id: "copper",  name: "Copper",   power: 2,  speed: 1.35, reach: 2.8, cost: { copper: 12 } },
+  { id: "iron",    name: "Iron",     power: 3,  speed: 1.70, reach: 3.0, cost: { iron: 20 } },
+  { id: "silver",  name: "Silver",   power: 4,  speed: 2.10, reach: 3.2, cost: { silver: 24 } },
+  { id: "gold",    name: "Gilded",   power: 6,  speed: 2.90, reach: 3.5, cost: { gold: 20, ruby: 12 } },
+  { id: "diamond", name: "Diamond",  power: 8,  speed: 3.60, reach: 3.8, cost: { diamond: 22 } },
+  { id: "mythril", name: "Mythril",  power: 11, speed: 4.40, reach: 4.2, cost: { mythril: 20, coreium: 8 } },
 ];
 
 DG.SHOP = [
@@ -79,9 +79,9 @@ DG.Floaters = class Floaters {
 /* ── loot that flies home ──────────────────────────────────────────────── */
 DG.Drops = class Drops {
   constructor() { this.list = []; }
-  add(x, y, ore, coins) {
+  add(x, y, ore, coins, amount = 1) {
     this.list.push({ x, y, vx: (Math.random() - 0.5) * 60, vy: -80 - Math.random() * 40,
-                     t: 0, ore, coins, grabbed: false });
+                     t: 0, ore, coins, amount, grabbed: false });
   }
   update(dt, player, magnet) {
     const range = magnet ? 90 : 46;
@@ -238,7 +238,8 @@ DG.Player = class Player {
   collect(d) {
     if (d.coins) { this.coins += d.coins; DG.Audio.coin(); }
     if (d.ore) {
-      this.ore[d.ore] = (this.ore[d.ore] || 0) + 1;
+      const n = d.amount || 1;
+      this.ore[d.ore] = (this.ore[d.ore] || 0) + n;
       DG.Audio.pop();
     }
   }

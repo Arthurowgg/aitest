@@ -10,7 +10,7 @@ const T = {
   CRYSTAL: 6, OBSIDIAN: 7, MAGMA: 8, BEDROCK: 9, LAVA: 10, PLANK: 11,
   COAL: 20, COPPER: 21, IRON: 22, SILVER: 23, GOLD: 24,
   RUBY: 25, DIAMOND: 26, MYTHRIL: 27, COREIUM: 28,
-  GRASS: 12,
+  GRASS: 12, TORCH: 13,
 };
 
 /* ore order doubles as the crafting order shown in the forge */
@@ -32,9 +32,9 @@ const TILES = [];
 function def(id, o) { TILES[id] = Object.assign({ id, solid: true, hard: 0.5, tier: 1, coins: 0, ore: null }, o); }
 
 def(T.AIR,   { solid: false, hard: 0, bg: null });
-def(T.DIRT,  { name: "dirt", sprites: "dirt", variants: 8, hard: 0.30, coins: 1, bg: "dirt" });
+def(T.DIRT,  { name: "dirt", sprites: "dirt", variants: 8, hard: 0.25, coins: 1, bg: "dirt" });
 def(T.GRAVEL,{ name: "gravel", sprites: "gravel", variants: 8, hard: 0.34, coins: 1, bg: "gravel" });
-def(T.STONE, { name: "stone", sprites: "stone", variants: 12, hard: 0.85, coins: 2, bg: "stone" });
+def(T.STONE, { name: "stone", sprites: "stone", variants: 12, hard: 0.72, coins: 2, bg: "stone" });
 def(T.GRANITE,{name: "granite", sprites: "granite", variants: 8, hard: 1.05, coins: 3, bg: "granite" });
 def(T.DEEPSLATE,{ name: "deepslate", sprites: "deepslate", variants: 8, hard: 1.5, tier: 2, coins: 5, bg: "deepslate" });
 def(T.CRYSTAL,{ name: "crystal", sprites: "crystal", variants: 5, hard: 2.4, tier: 3, coins: 8, glow: "#2e6ea8", bg: "crystal" });
@@ -42,37 +42,44 @@ def(T.OBSIDIAN,{ name: "obsidian", sprites: "obsidian", variants: 3, hard: 3.2, 
 def(T.MAGMA, { name: "magma", sprites: "magma", variants: 5, hard: 1.3, tier: 3, coins: 9, glow: "#ff6a1a", bg: "magma" });
 def(T.BEDROCK,{ name: "bedrock", sprites: "bedrock", variants: 4, hard: Infinity, tier: 99, unbreakable: true });
 def(T.LAVA,  { name: "lava", solid: false, hard: 0, lava: true, bg: null });
-def(T.GRASS, { name: "grass", sprites: "grass", variants: 2, hard: 0.32, coins: 1, bg: "dirt" });
+def(T.GRASS, { name: "grass", sprites: "grass", variants: 2, hard: 0.28, coins: 1, bg: "dirt" });
+def(T.TORCH, { name: "torch", solid: false, hard: 0.15, coins: 0, light: true });
 def(T.PLANK, { name: "planks", sprites: null, variants: 1, hard: 0.6, coins: 0 });
 
 /* ores: sprite set + upgrade economy */
 const ORE_DEFS = {
-  coal:    { hard: 0.55, tier: 1, coins: 6,   glow: null },
-  copper:  { hard: 0.70, tier: 1, coins: 12,  glow: null },
-  iron:    { hard: 0.95, tier: 2, coins: 20,  glow: null },
-  silver:  { hard: 1.25, tier: 3, coins: 34,  glow: "#cfe8ff" },
-  gold:    { hard: 1.55, tier: 4, coins: 55,  glow: "#ffe9a0" },
-  ruby:    { hard: 1.75, tier: 4, coins: 80,  glow: "#ff8a99" },
-  diamond: { hard: 2.10, tier: 5, coins: 120, glow: "#8ff0ff" },
-  mythril: { hard: 2.45, tier: 5, coins: 180, glow: "#7df5a8" },
-  coreium: { hard: 2.90, tier: 6, coins: 280, glow: "#ff8af0" },
+  /* yield = ore chunks per tile: a seam is worth digging out */
+  coal:    { hard: 0.55, tier: 1, coins: 5,  yield: 3, glow: null },
+  copper:  { hard: 0.70, tier: 1, coins: 9,  yield: 2, glow: null },
+  iron:    { hard: 0.95, tier: 2, coins: 16, yield: 2, glow: null },
+  silver:  { hard: 1.25, tier: 3, coins: 26, yield: 2, glow: "#cfe8ff" },
+  gold:    { hard: 1.55, tier: 4, coins: 42, yield: 2, glow: "#ffe9a0" },
+  ruby:    { hard: 1.75, tier: 4, coins: 60, yield: 2, glow: "#ff8a99" },
+  diamond: { hard: 2.10, tier: 5, coins: 95, yield: 2, glow: "#8ff0ff" },
+  mythril: { hard: 2.45, tier: 5, coins: 140, yield: 2, glow: "#7df5a8" },
+  coreium: { hard: 2.90, tier: 6, coins: 200, yield: 2, glow: "#ff8af0" },
 };
 for (const name of ORES) {
   const d = ORE_DEFS[name];
   def(ORE_TILE[name], {
     name, sprites: "ore_" + name, variants: 3, ore: name,
     hard: d.hard, tier: d.tier, coins: d.coins, glow: d.glow, oreMark: true,
+    yield: d.yield,
   });
 }
 
 /* ── strata ──────────────────────────────────────────────────────────────── */
 const LAYERS = [
   { from: 0,   name: "Sky",       base: T.AIR },
-  { from: 8,   name: "Soil",      base: T.DIRT,      ores: { coal: 0.020, copper: 0.014 } },
-  { from: 52,  name: "Stone",     base: T.STONE,     ores: { coal: 0.016, copper: 0.012, iron: 0.010, silver: 0.005 } },
-  { from: 108, name: "Deepslate", base: T.DEEPSLATE, ores: { iron: 0.014, silver: 0.010, gold: 0.006, ruby: 0.004 } },
-  { from: 164, name: "Crystal",   base: T.CRYSTAL,   ores: { gold: 0.010, ruby: 0.008, diamond: 0.006, mythril: 0.004 } },
-  { from: 216, name: "Magma",     base: T.MAGMA,     ores: { diamond: 0.008, mythril: 0.007, coreium: 0.005 } },
+  { from: 8,   name: "Soil",      base: T.DIRT,      ores: { coal: 0.032, copper: 0.022 } },
+  { from: 52,  name: "Stone",     base: T.STONE,     ores: { coal: 0.024, copper: 0.016, iron: 0.018, silver: 0.009 } },
+  { from: 108, name: "Deepslate", base: T.DEEPSLATE, ores: { iron: 0.022, silver: 0.018, gold: 0.013, ruby: 0.009 } },
+  /* below here the rare rock is a *vein* inside a common base — a whole
+     cavern of glowing crystal would read as mush, veins read as treasure */
+  { from: 164, name: "Crystal",   base: T.DEEPSLATE, vein: T.CRYSTAL, veinAt: 0.655,
+    ores: { gold: 0.018, ruby: 0.014, diamond: 0.012, mythril: 0.008 } },
+  { from: 216, name: "Magma",     base: T.DEEPSLATE, vein: T.MAGMA,   veinAt: 0.625,
+    ores: { diamond: 0.015, mythril: 0.013, coreium: 0.011 } },
 ];
 DG.LAYER_AT = function (y) {
   let out = LAYERS[0];
@@ -141,15 +148,24 @@ DG.World = class World {
         if (y < surf[x]) { this.tiles[i] = T.AIR; this.bg[i] = T.AIR; continue; }
         if (y === surf[x]) { this.tiles[i] = T.GRASS; this.bg[i] = T.DIRT; continue; }
         let base = layer.base;
-        /* soil bedrock shell + unbreakable floor */
-        if (y >= H - 2) base = T.BEDROCK;
-        /* patches: gravel sweeps through soil & stone, granite blobs, obsidian pockets */
         const patch = fbm(x / 11, y / 9, this.SEED + 77, 3);
-        if (base === T.DIRT && patch > 0.66 && depth > 4) base = T.GRAVEL;
-        if (base === T.STONE && patch > 0.70) base = T.GRAVEL;
-        if (base === T.STONE && patch < 0.24) base = T.GRANITE;
-        if (base === T.DEEPSLATE && patch < 0.20) base = T.OBSIDIAN;
-        if (base === T.MAGMA && patch < 0.18) base = T.OBSIDIAN;
+        const fine = fbm(x / 4, y / 4, this.SEED + 251, 2);
+        if (layer.vein) {
+          /* rare rock shows up in veins… */
+          if (patch > layer.veinAt) base = layer.vein;
+          else if (patch < 0.255) base = T.OBSIDIAN;           // …pockets of glass
+          else if (fine > 0.725) base = T.GRANITE;
+        } else if (base === T.DIRT) {
+          if (patch > 0.66 && depth > 4) base = T.GRAVEL;
+        } else if (base === T.STONE) {
+          if (patch > 0.70) base = T.GRAVEL;
+          else if (patch < 0.24) base = T.GRANITE;
+        } else if (base === T.DEEPSLATE) {
+          if (patch < 0.20) base = T.OBSIDIAN;
+          else if (patch > 0.78) base = T.GRANITE;
+        }
+        /* the unbreakable floor is laid last: no vein or pocket may cut it */
+        if (y >= H - 2) base = T.BEDROCK;
         this.tiles[i] = base;
         this.bg[i] = base;
       }
@@ -157,6 +173,7 @@ DG.World = class World {
 
     /* ── caves: fbm thresholding + a few long worms so the map connects ── */
     for (let y = 6; y < H - 3; y++) {
+      const wallTile = DG.LAYER_AT(y).base;
       for (let x = 1; x < W - 1; x++) {
         const i = this.idx(x, y);
         const d = y - this.surfaceY;
@@ -166,7 +183,7 @@ DG.World = class World {
         const bias = d > 150 ? 0.03 : 0;
         if (c * 0.72 + c2 * 0.28 > 0.615 - bias) {
           this.tiles[i] = T.AIR;
-          this.bg[i] = fbm(x / 5, y / 5, this.SEED + 31, 2) > 0.5 ? T.DIRT : T.STONE;
+          this.bg[i] = wallTile;
         }
       }
     }
@@ -185,7 +202,7 @@ DG.World = class World {
               if (this.inside(tx, ty) && ty > surf[tx] && ty < H - 3) {
                 const ii = this.idx(tx, ty);
                 this.tiles[ii] = T.AIR;
-                this.bg[ii] = T.STONE;
+                this.bg[ii] = DG.LAYER_AT(ty).base;
               }
             }
       }
@@ -195,7 +212,7 @@ DG.World = class World {
       for (let x = this.campX - 1; x <= this.campX + 1; x++) {
         const i = this.idx(x, y);
         this.tiles[i] = T.AIR;
-        this.bg[i] = y < surf[this.campX] + 4 ? T.DIRT : T.STONE;
+        this.bg[i] = DG.LAYER_AT(y).base;
       }
 
     /* ── ore veins: random walks that cluster like real seams ───────────── */
@@ -242,18 +259,23 @@ DG.World = class World {
         let floor = false;
         if (y < H - 4 && this.tiles[this.idx(x, y + 1)] !== T.AIR) floor = true;
         const lavaChance = (y - 196) / 60;
-        if (floor && rng() < 0.08 + lavaChance * 0.5) {
+        if (floor && rng() < 0.04 + lavaChance * 0.34) {
           this.tiles[i] = T.LAVA;
           this.bg[i] = T.MAGMA;
         }
       }
     }
 
-    /* base camp platform */
+    /* base camp: a plank landing over the shaft, with two torches */
     const cy = surf[this.campX] - 1;
     for (let x = this.campX - 3; x <= this.campX + 3; x++) {
+      if (!this.inside(x, cy)) continue;
       const i = this.idx(x, cy);
-      if (this.inside(x, cy)) { this.tiles[i] = T.PLANK; this.bg[i] = T.AIR; }
+      if (x < this.campX - 1 || x > this.campX + 1) { this.tiles[i] = T.PLANK; this.bg[i] = T.AIR; }
+    }
+    for (const tx of [this.campX - 3, this.campX + 3]) {
+      const i = this.idx(tx, cy - 1);
+      if (this.inside(tx, cy - 1) && this.tiles[i] === T.AIR) { this.tiles[i] = T.TORCH; this.bg[i] = T.AIR; }
     }
     this.campY = cy;
     this.surface = surf;
@@ -287,7 +309,7 @@ DG.World = class World {
     const bgFrom = id === T.GRASS ? T.DIRT : id;
     this.set(x, y, T.AIR, { bgFrom });
     this.damage[this.idx(x, y)] = 0;
-    return { id, coins: d.coins, ore: d.ore, name: d.name, x, y };
+    return { id, coins: d.coins, ore: d.ore, yield: d.yield || 0, name: d.name, x, y };
   }
 
   /* bombs blow a soft pocket out of the rock */

@@ -126,8 +126,8 @@ DG.Render = (function () {
       g.fillStyle = deep > 0.5 ? "#0a0812" : "#0d0b18";
       g.fillRect(0, 0, view.w, view.h);
       const layers = [
-        { img: A("bg/cave_far.png"), px: 0.22, py: 0.16, alpha: 1 - deep * 0.5 },
-        { img: A("bg/cave_mid.png"), px: 0.42, py: 0.3, alpha: 1 - deep * 0.35 },
+        { img: A("bg/cave_far.png"), px: 0.20, py: 0.14, alpha: 0.85 - deep * 0.45 },
+        { img: A("bg/cave_mid.png"), px: 0.40, py: 0.28, alpha: 0.95 - deep * 0.35 },
       ];
       for (const L of layers) {
         if (!L.img) continue;
@@ -163,16 +163,25 @@ DG.Render = (function () {
               const v = (world.variants[i] % bd.variants) + 1;
               const s = A(`tiles/bg_${bd.sprites}_${v}.png`);
               if (s) g.drawImage(s, sx, sy);
-            } else {
+            } else if (y > world.surfaceAt(x) + 1) {
+              /* carved-out void below ground: solid black so rock reads as mass */
               g.fillStyle = "#0a0912";
               g.fillRect(sx, sy, TILE, TILE);
             }
-            if (id === T.LAVA) {
+            /* (above the surface an empty tile paints nothing — the sky shows) */
+            if (id === T.TORCH) {
+          const r = 46;
+          if (small) lg.drawImage(small, x * TILE - c.x + TILE / 2 - r, y * TILE - c.y + TILE / 2 - r, r * 2, r * 2);
+        } else if (id === T.LAVA) {
               const frame = Math.floor(game_time * 6 + (x + y) * 0.7) % 4;
               const s = A(`fx/lava_${frame}.png`);
               if (s) g.drawImage(s, sx, sy);
               else { g.fillStyle = "#e2541a"; g.fillRect(sx, sy, TILE, TILE); }
             }
+            continue;
+          }
+          if (id === T.TORCH) {
+            g.drawImage(A("sprites/prop_torch.png"), sx, sy);
             continue;
           }
           if (id === T.PLANK) {
@@ -397,7 +406,10 @@ DG.Render = (function () {
         if (x < 0 || y < 0 || x >= world.W || y >= world.H) continue;
         const id = world.tiles[y * world.W + x];
         const d = TILES[id];
-        if (id === T.LAVA) {
+        if (id === T.TORCH) {
+          const r = 46;
+          if (small) lg.drawImage(small, x * TILE - c.x + TILE / 2 - r, y * TILE - c.y + TILE / 2 - r, r * 2, r * 2);
+        } else if (id === T.LAVA) {
           const r = 30;
           if (small) lg.drawImage(small, x * TILE - c.x + TILE / 2 - r, y * TILE - c.y + TILE / 2 - r, r * 2, r * 2);
         } else if (d && d.glow && !d.oreMark) {
@@ -656,9 +668,12 @@ DG.Render = (function () {
           const tag = "OWNED";
           drawTextCol(g, tag, r.x + r.w - textWidth(tag) - 8, r.y + 7, "#3ec27a");
         } else if (next) {
-          oreRow(g, r.x + r.w - 8, r.y + 7, pick.cost, p.ore, true);
-          const tag = can ? "F to forge" : "";
-          if (tag) drawTextCol(g, tag, r.x + r.w - 100, r.y + 7, "#ffd35c");
+          const costW = oreRow(g, r.x + r.w - 8, r.y + 7, pick.cost, p.ore, true);
+          if (can) {
+            const tag = "F to forge";
+            const tx = r.x + r.w - 8 - costW - 10 - textWidth(tag);
+            if (tx > r.x + 140) drawTextCol(g, tag, tx, r.y + 7, "#ffd35c");
+          }
         } else {
           const tag = "locked";
           drawTextCol(g, tag, r.x + r.w - textWidth(tag) - 8, r.y + 7, "#3a3560");

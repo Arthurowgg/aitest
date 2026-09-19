@@ -178,11 +178,13 @@ DG.Game = class Game {
     if (res.ore) {
       this.particles.burst(wx, wy, 5, { kind: "glint", speed: 55, life: 0.6, g: -40,
         col: ORE_DEFS[res.ore].glow || "#ffe9a0" });
-      this.drops.add(wx, wy, res.ore, res.coins);
+      this.drops.add(wx, wy, res.ore, res.coins, res.yield);
+      if (res.yield > 1) this.floaters.add(wx, wy, "+" + res.yield + " " + res.ore, "#7df5a8");
       const next = DG.PICKS[player.tier + 1];
       if (next && next.cost[res.ore]) {
-        const have = (player.ore[res.ore] || 0) + 1, need = next.cost[res.ore];
-        if (have >= need) this.hintMsg("forge is ready — TAB to upgrade!", 4);
+        const have = (player.ore[res.ore] || 0) + res.yield, need = next.cost[res.ore];
+        if (have >= need && (player.ore[res.ore] || 0) < need)
+          this.hintMsg("forge is ready — TAB to upgrade!", 4);
       }
     } else if (res.coins) {
       this.drops.add(wx, wy, null, res.coins);
@@ -403,8 +405,15 @@ DG.Game = class Game {
       this.floaters.update(dt);
       this.drops.update(dt, p, p.up.magnet);
       this.stats.deepest = Math.max(this.stats.deepest, this.world.depthMeters(p.cy / TILE));
+      DG.Audio.ambience(this.world.depthMeters(p.cy / TILE), true);
+      /* a heartbeat when you are nearly out of blood */
+      if (p.hp <= 2 && !p.dead) {
+        this.beat = (this.beat || 0) - dt;
+        if (this.beat <= 0) { this.beat = 1.05; DG.Audio.heartbeat(); }
+      }
       if (p.dead) { this.state = "dead"; this.deathT = 0; this.save(); }
     } else {
+      DG.Audio.ambience(0, false);
       this.particles.update(dt);
       this.floaters.update(dt);
       if (this.state === "dead") this.deathT += dt;

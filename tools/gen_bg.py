@@ -52,8 +52,8 @@ def cave_layer(seed, rock, lit, depth_lo, depth_hi, spikes, bottom=True):
 
 def build():
     made = []
-    made.append(save(cave_layer(11, "#1a1830", "#242240", 8, 26, 14), "bg", "cave_far.png"))
-    made.append(save(cave_layer(22, "#100e1c", "#191728", 10, 34, 18), "bg", "cave_mid.png"))
+    made.append(save(cave_layer(11, "#2b2745", "#3a3460", 8, 26, 14), "bg", "cave_far.png"))
+    made.append(save(cave_layer(22, "#1b1830", "#272340", 10, 34, 18), "bg", "cave_mid.png"))
     # vignette: soft dark corners, drawn over the frame
     run([IM, "-size", "320x240", "radial-gradient:none-black", A / "bg" / "vignette.png"])
     made.append(A / "bg" / "vignette.png")

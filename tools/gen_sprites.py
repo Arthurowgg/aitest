@@ -186,6 +186,9 @@ kwwWWeWWeWwk
 ....kkkk....
 ......kk....
 """, bat_pal)
+    for i, g in enumerate((bat_up, bat_dn)):
+        made.append(save(g, "sprites", f"bat_{i}.png"))
+
     golem_pal = {"R": "#6b7286", "r": "#4b5162", "g": "#3a3f4d",
                  "E": "#8a91a6", "x": "#ffd75c", "C": "#ff8a2b",
                  "k": "#2a2e38"}

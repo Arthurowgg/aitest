@@ -118,8 +118,11 @@ sandbox.AudioContext = undefined;
 sandbox.webkitAudioContext = undefined;
 
 const ctx = vm.createContext(sandbox);
-const files = ["js/core.js", "js/assetlist.js", "js/assets.js", "js/world.js",
-               "js/entities.js", "js/render.js", "js/game.js"];
+/* take the script order straight from index.html — a mismatch there is a bug
+   the browser would hit immediately and a fixed list would hide */
+const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
+const files = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => m[1]);
+if (!files.length) { console.error("✗ no <script> tags found in index.html"); process.exit(1); }
 for (const f of files) {
   const code = fs.readFileSync(path.join(ROOT, f), "utf8");
   try {
@@ -133,6 +136,7 @@ console.log(`✓ all ${files.length} scripts loaded`);
 
 /* ── drive the game ──────────────────────────────────────────────────────── */
 const DG = sandbox.DG;
+const missingAssets = new Set();
 /* top-level `const`s live in the VM's global lexical scope, not on sandbox */
 const T = vm.runInContext("T", ctx);
 const TILES = vm.runInContext("TILES", ctx);
@@ -142,9 +146,14 @@ async function main() {
 await new Promise((r) => setTimeout(r, 60));   // let the asset promises settle
 if (!DG.game) { console.error("✗ DG.game missing"); process.exit(1); }
 const game = DG.game;
+
+/* every A() miss is a rendering gap — record them all */
+const realA = DG.Assets.A.bind(DG.Assets);
+DG.Assets.A = (p) => { const img = realA(p); if (!img) missingAssets.add(p); return img; };
 game.world = new DG.World(SEED);       // deterministic seed for QA
 game.newWorld(true);
-game.state = "play";
+const FORCE_STATE = (ARGS.find((a) => a.startsWith("--state=")) || "").split("=")[1];
+game.state = FORCE_STATE || "play";
 
 /* deterministic-ish input driver */
 let rngState = 1337;
@@ -180,17 +189,20 @@ for (let f = 0; f < FRAMES; f++) {
     game.world.set(150, 200, T.IRON, { silent: true });
     ok("iron blocked for wood pick", game.world.canMine(150, 200, 1) === "tier");
     ok("iron allowed for copper pick", game.world.canMine(150, 200, 2) === "ok");
-    ok("bedrock never breaks", game.world.canMine(150, 255, 7) === "hard");
+    const probe = [[150, 255], [5, 254], [200, 255]].map(([x, y]) => `${x},${y}=${game.world.get(x, y)}`);
+    ok("world has an unbreakable floor (" + probe.join(" ") + ")",
+       game.world.canMine(150, 255, 7) === "hard");
 
     /* the forge: ore in → tier up */
     p.ore = {};
     ok("cannot forge copper with no ore", !game.canForge(1));
-    p.ore.copper = 10;
-    ok("can forge copper with 10 copper", game.canForge(1));
+    const copperCost = DG.PICKS[1].cost.copper;
+    p.ore.copper = copperCost;
+    ok(`can forge copper with ${copperCost} copper`, game.canForge(1));
     game.forge(1);
     ok("tier advanced to copper", p.tier === 1);
     ok("copper was spent", (p.ore.copper || 0) === 0);
-    p.ore = { iron: 18, silver: 26, gold: 20, ruby: 10, diamond: 24, mythril: 22, coreium: 8 };
+    p.ore = { iron: 20, silver: 24, gold: 20, ruby: 12, diamond: 22, mythril: 20, coreium: 8 };
     for (let i = 2; i < DG.PICKS.length; i++) game.forge(i);
     ok("all seven pickaxes forgeable", p.tier === 6);
     ok("cannot skip ahead", (game.canForge(6) === false || p.tier === 6));
@@ -271,6 +283,51 @@ for (let f = 0; f < FRAMES; f++) {
     process.exit(failures ? 1 : 0);
   }
 
+  if (SCRIPT === "sweep") {
+    /* touch every code path that draws: all tiles, mobs, particles, menus */
+    if (f === 1) {
+      const w = game.world, p = game.player;
+      const ids = Object.values(T);
+      let x = Math.floor(p.cx / 16) + 3, y = Math.floor(p.cy / 16);
+      for (const id of ids) {
+        w.set(x, y, id, { silent: true });
+        w.variants[w.idx(x, y)] = f % 12;
+        x++;
+        if (x > Math.floor(p.cx / 16) + 20) { x = Math.floor(p.cx / 16) + 3; y++; }
+      }
+      /* every mob, every drop, every particle kind */
+      for (const kind of Object.keys({ bat: 1, golem: 1, ember: 1 })) {
+        const m = new DG.Mob(kind, p.x + 20 + game.mobs.length * 14, p.y);
+        game.mobs.push(m);
+      }
+      for (const ore of ["coal", "copper", "iron", "silver", "gold", "ruby", "diamond", "mythril", "coreium"]) {
+        game.drops.add(p.cx + (Math.random() - 0.5) * 30, p.cy - 10, ore, 3);
+      }
+      game.drops.add(p.cx + 12, p.cy - 10, null, 5);
+      for (const kind of ["chip", "spark", "smoke", "glint"]) {
+        game.particles.burst(p.cx + (Math.random() - 0.5) * 20, p.cy - 8, 3, { kind, speed: 30, life: 1 });
+      }
+      game.floaters.add(p.cx, p.cy - 12, "+99", "#ffe9a0", true);
+      /* a bomb mid-flight, a torch, water of lava */
+      game.bombs.push({ x: p.cx + 14, y: p.cy - 4, vy: 0, t: 99 });
+      w.set(Math.floor(p.cx / 16) + 2, Math.floor(p.cy / 16) - 1, T.TORCH, { silent: true });
+      w.set(Math.floor(p.cx / 16) + 3, Math.floor(p.cy / 16) + 2, T.LAVA, { silent: true });
+    }
+    if (f === 6) { game.addHint; game.hintMsg("sweep", 5); }
+    /* cycle every pickaxe tier in hand + every screen */
+      const tier = Math.floor(f / 30) % 7;
+    game.player.tier = tier;
+    game.state = ["play", "shop", "pause", "dead", "title", "play"][Math.floor(f / 60) % 6];
+    game.shopTab = Math.floor(f / 90) % 2;
+    game.player.hp = Math.max(1, (f % 10));
+    game.player.up.lantern = f % 2 === 0;
+    game.player.bombs = 2;
+    I.touch.active = f % 2 === 0;
+    I.lastDevice = f % 2 === 0 ? "touch" : "kb";
+    if (I.touch.active) { I.touch.moveId = 1; I.touch.mx = 90; I.touch.my = 200; }
+    game.state = game.state === "title" ? "title" : game.state;
+  }
+
   if (SCRIPT === "mine") {
     /* dig downward, wander sideways, jump on occasion */
     I.keys.KeyS = true;
@@ -330,6 +387,12 @@ for (let f = 0; f < FRAMES; f++) {
 const p = game.player;
 console.log(log.join("\n"));
 console.log(`✓ ${FRAMES} frames simulated, no errors`);
+if (missingAssets.size) {
+  console.log(`✗ ${missingAssets.size} asset(s) requested but missing:`);
+  for (const m of [...missingAssets].sort()) console.log("   " + m);
+} else {
+  console.log("✓ every asset the frame asked for exists");
+}
 console.log(`  state=${game.state} hp=${p.hp}/${p.maxHp} coins=${p.coins} tier=${p.tier}`);
 console.log(`  ore=${JSON.stringify(p.ore)}`);
 console.log(`  depth=${game.world.depthMeters(p.cy / 16)}m mined=${game.stats.mined} kills=${game.stats.kills}`);
