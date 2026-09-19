@@ -1,0 +1,51 @@
+name: Publish to GitHub Pages
+
+# The game is plain static files — this workflow just stages them and hands the
+# folder to GitHub Pages.  No build step, no dependencies.
+on:
+  push:
+    branches: ["arena/01a0ba7c-aitest", "main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Stage the site
+        run: |
+          set -e
+          mkdir -p _site
+          cp index.html style.css manifest.webmanifest .nojekyll _site/
+          cp icon-192.png icon-512.png apple-touch-icon.png _site/ 2>/dev/null || true
+          cp -r js assets _site/
+          # keep the deploy lean — the QA harness and the screenshot set stay in the repo
+          rm -f _site/js/assetlist.js.bak
+
+      - name: Upload the artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
