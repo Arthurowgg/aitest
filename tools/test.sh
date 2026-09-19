@@ -50,9 +50,15 @@ node -e '
   if (!/rel="manifest"/.test(html)) throw new Error("no manifest link");
   if (!/rel="icon"/.test(html)) throw new Error("no favicon link");
   if (!/<meta name="theme-color"/.test(html)) throw new Error("no theme-color");
-  for (const id of ["drill", "left", "right", "vent", "sonar", "patch", "purge", "ascend"])
+  for (const id of ["drill", "left", "right", "vent", "sonar", "patch", "purge", "ascend",
+                    "sell", "forge", "repair", "descend", "start", "resume", "rebuild"])
     if (!html.includes(`data-act="${id}"`)) throw new Error("deck is missing " + id);
-  console.log("  ✓ manifest, icons, viewport and deck markup all present");
+  if (!/data-hw-strip/.test(html)) throw new Error("the depot deck has no hardware strip");
+  const css = fs.readFileSync("style.css", "utf8");
+  for (const bit of ["100dvh", "env(safe-area-inset-bottom)", "orientation: landscape",
+                     "prefers-reduced-motion", "--btn-h"])
+    if (!css.includes(bit)) throw new Error("style.css has no " + bit);
+  console.log("  ✓ manifest, icons, viewport, deck markup and responsive CSS all present");
 '
 node tools/headless.js --frames=420 --script=touch --seed=4 | tail -3
 

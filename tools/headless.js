@@ -142,8 +142,13 @@ function makeEl(tag) {
     removeAttribute(k) { delete this.attrs[k]; },
     addEventListener(k, f) { (this.handlers[k] = this.handlers[k] || []).push(f); },
     removeEventListener() {},
-    querySelector: () => null,
-    querySelectorAll: () => [],
+    querySelector(sel) {
+      return this.children.find((c) => c.tagName === String(sel).toUpperCase()) || null;
+    },
+    querySelectorAll(sel) {
+      return this.children.filter((c) => c.tagName === String(sel).toUpperCase());
+    },
+    get firstChild() { return this.children[0] || null; },
     setPointerCapture() {}, releasePointerCapture() {},
     appendChild(c) { this.children.push(c); return c; },
     focus() {}, blur() {}, click() {},
@@ -196,10 +201,12 @@ function buildDeck(markup) {
     if (attrs.some(([k]) => ["data-v", "data-bar", "data-warn", "data-only"].includes(k)))
       spawn(attrs, "", m[1]);
   }
+  deck.appendChild = (k) => { kids.push(k); return k; };
   deck.querySelectorAll = (sel) => {
     const key = sel.replace(/[\[\]]/g, "");
     return kids.filter((k) => (k.attrs[key] !== undefined));
   };
+  deck.querySelector = (sel) => deck.querySelectorAll(sel)[0] || null;
   return deck;
 }
 const deck = buildDeck(deckMarkup);
@@ -464,9 +471,12 @@ async function main() {
     })());
     rig.hull = 40;
     const c0 = rig.credits;
-    rig.credits -= Math.ceil(rig.hullMax - rig.hull) * 2;
+    ok("the repair bay prices the damage at 2 CR a point", rig.repairCost() === Math.ceil(rig.hullMax - rig.hull) * 2);
+    ok("depot repairs restore the hull", rig.repair(game) && rig.hull === rig.hullMax && rig.credits === c0 - rig.repairCost());
+    ok("a sound hull cannot be repaired", rig.repairCost() === 0 && rig.repair(game) === false);
+    rig.credits = 0; rig.hull = 10;
+    ok("repairs need credits", rig.repair(game) === false && rig.hull === 10);
     rig.hull = rig.hullMax;
-    ok("depot repairs restore the hull", rig.hull === rig.hullMax && rig.credits < c0);
 
     /* surfaces: the hold empties into the bank */
     rig.cargo = { coal: 4, gold: 2 };
@@ -543,6 +553,25 @@ async function main() {
        deckActs.every((id) => DG.Touch.actionIds.includes(id)));
     ok("every action the deck exposes is wired to a real command",
        DG.Touch.actionIds.every((id) => typeof id === "string"));
+    ok("the depot deck can fit a bit and repair the hull",
+       DG.Touch.actionIds.includes("forge") && DG.Touch.actionIds.includes("repair"));
+    ok("every hardware row has a deck button",
+       DG.HARDWARE.every((h) => DG.Touch.actionIds.includes("hw:" + h.id)));
+    /* the deck's depot buttons must mirror the panel's own prices */
+    game.state = "depot";
+    R2.credits = 4000; R2.hull = R2.hullMax - 30; R2.owned = {}; R2.drillIndex = 0;
+    R2.bank = { copper: 40 };
+    const dmd = DG.Touch.model(game);
+    ok("the deck quotes the repair it would buy", dmd.btn.repair.sub.includes(String(R2.repairCost())));
+    ok("the deck quotes the next grade's ore", /14 COPPER/.test(dmd.btn.forge.sub));
+    ok("the deck prices hardware like the bay does", /^300 CR$/.test(dmd.btn["hw:cargo"].sub));
+    R2.bank = {}; R2.credits = 10;
+    const dmd2 = DG.Touch.model(game);
+    ok("the deck greys out a bit it cannot afford", dmd2.btn.forge.disabled === true);
+    ok("the deck greys out hardware it cannot afford", dmd2.btn["hw:cargo"].disabled === true);
+    R2.hull = R2.hullMax;
+    ok("the deck greys out a repair that is not needed", DG.Touch.model(game).btn.repair.disabled === true);
+    R2.credits = 0; game.state = "console";
 
     /* every screen draws without exploding */
     for (const st of ["title", "console", "depot", "pause", "wrecked", "wrecked"]) {
@@ -752,12 +781,63 @@ async function main() {
         T3.assert("the deck knows every button the page ships",
                   [...deckMarkup.matchAll(/data-act="([a-z]+)"/g)]
                     .every((m) => DG.Touch.actionIds.includes(m[1])));
-      } else if (f === 404) {
+      } else if (f === 390) {
         R.heat = 80;
         T3.assert("VENT starts the coolant loop",
                   DG.Touch.act("vent", game) && R.status === "venting");
-      } else if (f === 419) {
+      } else if (f === 404) {
         T3.assert("the coolant loop is dumping heat", R.heat < 78);
+
+        /* ── the depot deck: sell the haul, fit the next bit, fix the hull ── */
+        R.status = "idle";
+        R.heat = 0;
+        game.state = "depot";
+        R.bank = { copper: 40, iron: 12 };
+        R.credits = 3000;
+        T3.credits0 = R.credits;
+        T3.assert("the deck follows to the depot pad", DG.Touch.model(game).pad === "depot");
+        T3.assert("SELL ALL banks the ore",
+                  DG.Touch.act("sell", game) && R.credits > T3.credits0 && Object.keys(R.bank).length === 0);
+      } else if (f === 406) {
+        R.bank = { copper: 40 };                       /* ore for the copper bit */
+        T3.credits1 = R.credits;
+        T3.assert("FIT BIT forges the next grade",
+                  DG.Touch.act("forge", game) && R.drillIndex === 1);
+        T3.assert("the forged bit ate the ore and the credits it quoted",
+                  R.bank.copper === 26 && R.credits === T3.credits1 - 120);
+      } else if (f === 408) {
+        R.hull = R.hullMax - 24;
+        T3.repairCost = R.repairCost();
+        T3.credits2 = R.credits;
+        T3.assert("REPAIR HULL welds the plating back on",
+                  DG.Touch.act("repair", game) && R.hull === R.hullMax);
+        T3.assert("the repair charged the price on the button",
+                  T3.repairCost === 48 && R.credits === T3.credits2 - T3.repairCost);
+        T3.cap0 = R.cargoCap;
+        T3.credits3 = R.credits;
+        T3.assert("the hardware strip buys a cargo bay",
+                  DG.Touch.act("hw:cargo", game) && R.cargoCap === T3.cap0 + 6);
+        T3.assert("the bay charged its list price", R.credits === T3.credits3 - 300);
+      } else if (f === 410) {
+        const dm = DG.Touch.model(game);
+        T3.assert("the hammered buttons show what they cost",
+                  /COPPER|IRON|SILVER/.test(dm.btn.forge.sub) && /1\/3/.test(dm.btn["hw:cargo"].sub));
+        T3.assert("the strip greys out a maxed row", (() => {
+          R.owned.damping = 1;
+          return DG.Touch.model(game).btn["hw:damping"].disabled === true;
+        })());
+        T3.assert("the strip greys out what the bank cannot buy", (() => {
+          const keep = R.credits; R.credits = 0;
+          const out = DG.Touch.model(game).btn["hw:armour"].disabled === true;
+          R.credits = keep;
+          return out;
+        })());
+        T3.assert("every hardware row has a deck button",
+                  DG.HARDWARE.every((h) => DG.Touch.actionIds.includes("hw:" + h.id)));
+        T3.assert("the depot pad is what the deck shows", DG.Touch.model(game).pad === "depot");
+      } else if (f === 412) {
+        T3.assert("DESCEND sends the rig back down the shaft",
+                  DG.Touch.act("descend", game) && R.status === "descend");
       }
     }
 

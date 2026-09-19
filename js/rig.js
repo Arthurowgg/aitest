@@ -518,6 +518,20 @@ DG.Rig = class Rig {
     return true;
   }
 
+  /* ── the repair bay: 2 CR per point of plating ────────────────────────────
+     One function, called by the depot button and by the touch deck, so the two
+     can never disagree about the price. */
+  repairCost() { return Math.max(0, Math.ceil(this.hullMax - this.hull)) * 2; }
+  repair(game) {
+    const cost = this.repairCost();
+    if (!cost) { DG.Audio.deny(); this.log(game, "HULL ALREADY NOMINAL", "warn"); return false; }
+    if (!this.spendCredits(cost)) { DG.Audio.deny(); this.log(game, "NOT ENOUGH CREDITS TO REPAIR", "warn"); return false; }
+    this.hull = this.hullMax;
+    DG.Audio.buy();
+    this.log(game, `HULL REPAIRED — ${cost} CR SPENT`, "good");
+    return true;
+  }
+
   checkContracts(game) {
     for (const c of this.contracts) {
       if (c.done) continue;

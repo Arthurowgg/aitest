@@ -34,10 +34,12 @@ python3 -m http.server 8000     # any static server will do
 or any device where a finger actually touches the screen — gets a modern touch
 panel under the glass: DEPTH, CREDITS and live HULL/HEAT bars, a big amber
 **DRILL** button you hold, `‹‹` / `››` steer pads that repeat while held, and
-VENT / SONAR / PATCH / PURGE / ASCEND. The deck follows the game state, so at
-the depot it becomes SELL ALL + DESCEND, on the title it becomes START SHIFT,
-and when the rig comes apart it becomes REBUILD. Every control is at least 46 px
-tall, sits above the safe-area inset, and lights up when it is not available.
+VENT / SONAR / PATCH / PURGE / ASCEND. The deck follows the game state: at the
+depot it becomes SELL ALL, **FIT BIT** (priced with the ore and credits the next
+grade needs), **REPAIR HULL** and DESCEND, plus a generated button for every row
+of the hardware bay; on the title it becomes START SHIFT, and when the rig comes
+apart it becomes REBUILD. Every control is at least 46 px tall, sits above the
+safe-area inset, and greys itself out when the console would refuse it.
 
 Portrait puts the deck under the glass; landscape moves it beside the glass so
 the picture keeps the full height. Everything is reachable with two thumbs:
@@ -200,6 +202,7 @@ js/touch.js           the deck: pure view model + the DOM that paints it
 js/main.js            boot, responsive canvas scaling, the fixed-step loop
 assets/               290 PNGs, all generated (safe to delete and rebuild)
 tools/                the art forge + the QA harness
+.github/workflows/    QA gate + the two-way GitHub Pages publish
 ```
 
 ## QA harness
@@ -222,8 +225,10 @@ python3 tools/preview.py /tmp/scene.json shot.png --scale=2     # 480x288 -> 960
   atlas, and every asset it asks for must exist.
 * `--script=touch` drives the deck exactly the way thumbs do — it presses
   DRILL, steers with the second finger, taps VENT, holds two fingers on the
-  glass at once, and asserts that the rig does what the buttons promise. It
-  also fails the build if the page ships a `data-act` the code does not know.
+  glass at once, then sells the haul, fits a bit, repairs the hull and buys a
+  cargo bay from the depot pad, asserting that every credit moved by exactly
+  the price printed on the button. It also fails the build if the page ships a
+  `data-act` the code does not know, or if a hardware row has no button.
 * `--script=systems` asserts the whole machine: deterministic rock, monotonic
   strata heat, strictly stronger bits, forge gating and consumption, drilling
   and descent, cargo caps, hazard damage, venting, sustained overheat damage,
@@ -241,24 +246,32 @@ python3 tools/preview.py /tmp/scene.json shot.png --scale=2     # 480x288 -> 960
 
 ## Deploy
 
-`.github/workflows/pages.yml` publishes the game to GitHub Pages: it stages
-`index.html`, `style.css`, `manifest.webmanifest`, the four icons, `js/` and
-`assets/` into a ~1.9 MB artifact and hands that folder to Pages — no build
-step, no bundler, nothing to invalidate.
+`.github/workflows/pages.yml` publishes the game to GitHub Pages on every push:
 
-Pages itself is a one-time repository switch: **Settings → Pages → Build and
-deployment → Source: GitHub Actions** (<https://github.com/Arthurowgg/aitest/settings/pages>).
-Until it is flipped the workflow does not fail — it writes the link into its
-run summary and skips the deploy — and after it is flipped every push to
-`main` (or to the build branch) publishes the game at
-<https://arthurowgg.github.io/aitest/>.
+1. the **QA job** runs `tools/test.sh` — nothing is published that has not
+   passed the whole suite;
+2. the **publish job** stages `index.html`, `style.css`, `manifest.webmanifest`,
+   the four icons, `.nojekyll`, `js/` and `assets/` (1.5 MB, 310 files — no
+   build step, no bundler, nothing to invalidate), then publishes that folder
+   **both ways** GitHub Pages accepts:
+   * through the Pages API (`upload-pages-artifact` + `deploy-pages`), which is
+     what *Source: GitHub Actions* serves, and
+   * as a mirror of the same folder on the `gh-pages` branch, which is what
+     *Source: Deploy from a branch* serves.
+
+Whichever source the repository is set to, one of the two lands the site, so
+there is no repository setting that has to be flipped for a push to publish —
+and if Pages is switched off entirely the run says so in its summary instead of
+failing silently. The game lives at <https://arthurowgg.github.io/aitest/>.
 
 Everything uses relative paths, so it works unchanged from a project subpath,
 and `python3 -m http.server` is all you need locally.
 
 ## Performance notes
 
-* 480×288 internal canvas, integer-scaled up with `image-rendering: pixelated`.
+* 480×288 internal canvas: whole- or half-multiple scaling on desktop, exact
+  fit on phones (where the screen is smaller than the game), always
+  `image-rendering: pixelated`.
 * ~900–1300 canvas calls per frame (see any `headless.js` run) — only the cells
   inside the glass are drawn, and the rock is cached per frame.
 * Assets are ~1.2 MB total (290 PNGs, 16×16-ish); the deployed site is ~1.9 MB.

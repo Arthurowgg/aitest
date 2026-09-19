@@ -1,34 +1,64 @@
-name: Publish to GitHub Pages
+name: QA and publish
 
-# The game is plain static files — this workflow stages exactly what a browser
-# needs and hands the folder to GitHub Pages.  No build step, no dependencies.
+# DEEPDIG is plain static files, so publishing means handing a folder to Pages.
+# This workflow does it two ways, because GitHub Pages has two sources and only
+# one of them can be selected per repository:
 #
-# Pages itself is a one-time repository setting (Settings → Pages → Source:
-# GitHub Actions).  Until that switch is flipped, the workflow says so instead
-# of failing: it skips the deploy and prints the link.
+#   * Source: GitHub Actions  -> the artifact path (upload-pages-artifact + deploy-pages)
+#   * Source: Deploy from a branch -> the mirror path (this run writes `gh-pages`)
+#
+# Whichever is configured, one of the two lands the site.  Nothing here needs a
+# build step, a bundler or a dependency.
+
 on:
   push:
     branches: ["arena/01a0ba7c-aitest", "main"]
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write      # the gh-pages mirror pushes the built site
+  pages: write         # publishing through the Pages API
+  id-token: write      # deploy-pages signs its request with OIDC
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  qa:
+    name: QA suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: bash tools/test.sh
+        run: bash tools/test.sh
+
+  publish:
+    name: Publish to GitHub Pages
+    needs: qa
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.pages.outputs.base_url }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Stage exactly what a browser needs
+        run: |
+          set -eu
+          mkdir -p _site
+          for f in index.html style.css manifest.webmanifest .nojekyll \
+                   icon-192.png icon-512.png apple-touch-icon.png favicon-32.png; do
+            if [ ! -f "$f" ]; then echo "::error file=$f::the site is missing $f"; exit 1; fi
+            cp "$f" _site/
+          done
+          cp -r js assets _site/
+          # the QA harness, the art forge and the screenshots stay in the repo
+          du -sh _site
+          find _site -type f | wc -l
 
       - name: Configure Pages
         id: pages
@@ -37,48 +67,77 @@ jobs:
         with:
           enablement: true
 
-      - name: Pages is not switched on yet
-        if: steps.pages.outcome == 'failure'
-        run: |
-          {
-            echo "### GitHub Pages is not enabled for this repository"
-            echo ""
-            echo "Everything the site needs is in this commit. Flip the switch once:"
-            echo ""
-            echo "1. open https://github.com/${{ github.repository }}/settings/pages"
-            echo "2. **Build and deployment → Source: GitHub Actions**"
-            echo "3. re-run this workflow (or push again) — the game goes live at"
-            echo "   https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
-          } >> "$GITHUB_STEP_SUMMARY"
-          echo "::warning title=GitHub Pages is off::Enable Settings → Pages → Source: GitHub Actions, then re-run this workflow."
-        continue-on-error: true
-
-      - name: Stage the site
-        if: steps.pages.outcome == 'success'
-        run: |
-          set -eu
-          mkdir -p _site
-          for f in index.html style.css manifest.webmanifest icon-192.png \
-                   icon-512.png apple-touch-icon.png favicon-32.png .nojekyll; do
-            if [ ! -f "$f" ]; then echo "::error file=$f::the site is missing $f"; exit 1; fi
-            cp "$f" _site/
-          done
-          cp -r js assets _site/
-          # the QA harness, the art tools and the screenshots stay in the repo
-          du -sh _site
-          find _site -type f | wc -l
-
       - name: Upload the artifact
         if: steps.pages.outcome == 'success'
         uses: actions/upload-pages-artifact@v3
         with:
           path: _site
 
-      - name: Deploy
+      - name: Deploy through the Pages API
         id: deployment
         if: steps.pages.outcome == 'success'
+        continue-on-error: true
         uses: actions/deploy-pages@v4
 
-      - name: Where it landed
-        if: steps.pages.outcome == 'success'
-        run: echo "published to ${{ steps.deployment.outputs.page_url }}"
+      - name: Mirror to the gh-pages branch
+        id: mirror
+        continue-on-error: true
+        run: |
+          set -eu
+          cd _site
+          git init -q -b gh-pages .
+          git add -A
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -q -m "publish $(echo "$GITHUB_SHA" | cut -c1-7)"
+          git push -q --force \
+            "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
+          echo "gh-pages now carries $(git rev-parse --short HEAD)"
+
+      - name: Ask Pages to rebuild the branch (legacy source only)
+        continue-on-error: true
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/pages/builds" | head -c 400
+
+      - name: Report
+        run: |
+          URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+          {
+            echo "## DEEPDIG — publish report"
+            echo ""
+            echo "| publishing path | result |"
+            echo "| --- | --- |"
+            echo "| Pages API (Source: *GitHub Actions*) | ${{ steps.deployment.outcome || 'not available' }} |"
+            echo "| \`gh-pages\` mirror (Source: *Deploy from a branch*) | ${{ steps.mirror.outcome }} |"
+            echo ""
+            if [ "${{ steps.deployment.outcome }}" = "success" ]; then
+              echo "**The game is live at <$URL>**"
+            else
+              echo "### One switch left"
+              echo ""
+              echo "GitHub Pages is not switched on for this repository, which is a"
+              echo "settings change only the owner can make. Pick either source:"
+              echo ""
+              echo "1. **Settings → Pages → Source: GitHub Actions** — then re-run this"
+              echo "   workflow (or push) and the artifact path publishes."
+              echo "2. **Settings → Pages → Source: Deploy from a branch → \`gh-pages\` / \`/\`**"
+              echo "   — this run has already written that branch, so the site builds as"
+              echo "   soon as the source is set."
+              echo ""
+              echo "<https://github.com/${{ github.repository }}/settings/pages>"
+              echo ""
+              echo "Either way the game lands at <$URL>."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.deployment.outcome }}" != "success" ]; then
+            echo "::warning title=GitHub Pages is off::Enable Settings → Pages for ${{ github.repository }}, then re-run this workflow."
+          fi
+
+      - name: Did anything publish?
+        if: steps.deployment.outcome != 'success' && steps.mirror.outcome != 'success'
+        run: |
+          echo "::error title=Nothing published::both publishing paths failed"
+          exit 1

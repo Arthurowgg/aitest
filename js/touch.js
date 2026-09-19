@@ -98,6 +98,33 @@ DG.Touch = (function () {
     m.btn.descend = {
       sub: rig.depthRecord > 0 ? `back to ${Math.round(rig.depthRecord)} m` : "begin the first shaft",
     };
+    /* the forge: the next grade in the sequence, priced the way the row is */
+    const next = DG.DRILLS[rig.drillIndex + 1];
+    if (next) {
+      const parts = Object.entries(next.cost).map(([ore, n]) => `${n} ${ore.toUpperCase()}`);
+      if (next.money) parts.push(`${next.money} CR`);
+      m.btn.forge = { disabled: !rig.canForge(rig.drillIndex + 1), sub: parts.join(" + ") };
+    } else {
+      m.btn.forge = { disabled: true, sub: "mythril fitted" };
+    }
+    /* the repair bay */
+    const need = Math.ceil(rig.hullMax - rig.hull);
+    const cost = rig.repairCost();
+    m.btn.repair = {
+      disabled: need <= 0 || rig.credits < cost,
+      sub: need ? `+${need} hull - ${cost} CR` : "hull nominal",
+    };
+    /* every hardware row gets a button, generated from the same table the
+       depot prints, so the bay and the deck can never fall out of step */
+    for (const item of DG.HARDWARE) {
+      const have = rig.owned[item.id] || 0;
+      const maxed = have >= item.times;
+      const price = item.cost + have * Math.round(item.cost * 0.55);
+      m.btn["hw:" + item.id] = {
+        disabled: maxed || rig.credits < price,
+        sub: maxed ? "MAX" : `${price} CR${have ? ` - ${have}/${item.times}` : ""}`,
+      };
+    }
 
     /* the title */
     let saved = null;
@@ -159,6 +186,8 @@ DG.Touch = (function () {
     purge: { tap: (g) => g.rig.useConsumable("purge", g) },
     ascend: { tap: (g) => g.rig.cmdAscend(g) },
     sell:  { tap: (g) => { if (g.rig.sellAll(g)) g.save(); } },
+    forge: { tap: (g) => { if (g.rig.forge(g, g.rig.drillIndex + 1)) g.save(); } },
+    repair: { tap: (g) => { if (g.rig.repair(g)) g.save(); } },
     descend: { tap: (g) => g.deploy() },
     start: { tap: (g) => startRun(g) },
     resume: { tap: (g) => { g.state = g.pauseFrom || "console"; } },
@@ -168,6 +197,10 @@ DG.Touch = (function () {
     rebuild: { tap: (g) => { if (g.wreckT >= 1) g.redeploy(); } },
     fullscreen: { tap: () => toggleFullscreen() },
   };
+
+  /* one button per DG.HARDWARE row, wired exactly like the markup ones */
+  for (const item of DG.HARDWARE || [])
+    ACTIONS["hw:" + item.id] = { tap: (g) => { if (g.rig.buyHardware(g, item)) g.save(); } };
 
   function startRun(game) {
     const has = !!DG.store.load();
@@ -243,6 +276,65 @@ DG.Touch = (function () {
   }
 
   /* ── wiring ───────────────────────────────────────────────────────────── */
+  /* one pointer, one command: every deck button speaks through here */
+  function wireButton(btn) {
+    const id = btn.getAttribute("data-act");
+    const a = ACTIONS[id];
+    if (!a) return null;
+    els["btn:" + id] = btn;
+    const sub = btn.querySelector("small");
+    if (sub) els["sub:" + id] = sub;
+
+    const down = (e) => {
+      if (e && e.preventDefault) e.preventDefault();
+      if (e && e.pointerId != null && btn.setPointerCapture) {
+        try { btn.setPointerCapture(e.pointerId); } catch (err) {}
+      }
+      /* the first finger on a button is also the gesture iOS needs before it
+         will let the audio context make a sound */
+      try { DG.Audio.unlock(); } catch (err) {}
+      btn.classList.add("down");
+      if (a.hold) setHold(a.hold, true, DG.game);
+      else if (a.tap) a.tap(DG.game);
+    };
+    const up = (e) => {
+      if (e && e.preventDefault) e.preventDefault();
+      btn.classList.remove("down");
+      if (a.hold) setHold(a.hold, false, DG.game);
+    };
+    btn.addEventListener("pointerdown", down);
+    btn.addEventListener("pointerup", up);
+    btn.addEventListener("pointercancel", up);
+    btn.addEventListener("lostpointercapture", up);
+    if (a.hold) btn.addEventListener("pointerleave", up);
+    /* a mouse-only browser never fires pointer events here, but keep click
+       as the safety net for the analytics-free browsers */
+    btn.addEventListener("contextmenu", (e) => e.preventDefault());
+    btn.addEventListener("dragstart", (e) => e.preventDefault());
+    return btn;
+  }
+
+  /* the hardware bay, built from DG.HARDWARE: six rows, six buttons */
+  function buildHardware() {
+    if (!deckEl || typeof document.createElement !== "function") return;
+    const strip = deckEl.querySelector ? deckEl.querySelector("[data-hw-strip]") : null;
+    if (!strip || !strip.appendChild) return;
+    for (const item of DG.HARDWARE || []) {
+      const btn = document.createElement("button");
+      btn.className = "hbtn";
+      btn.setAttribute("data-act", "hw:" + item.id);
+      btn.setAttribute("aria-label", `${item.name} — ${item.desc}`);
+      const name = document.createElement("span");
+      name.textContent = item.name;
+      const sub = document.createElement("small");
+      sub.textContent = item.cost + " CR";
+      btn.appendChild(name);
+      btn.appendChild(sub);
+      strip.appendChild(btn);
+      wireButton(btn);
+    }
+  }
+
   function boot() {
     if (!hasDOM) return false;
     bodyEl = document.body;
@@ -254,37 +346,10 @@ DG.Touch = (function () {
     for (const el of deckEl.querySelectorAll("[data-warn]")) els["chip:" + el.getAttribute("data-warn")] = el;
     for (const el of deckEl.querySelectorAll("[data-only]")) pads[el.getAttribute("data-only")] = el;
 
-    for (const btn of deckEl.querySelectorAll("[data-act]")) {
-      const id = btn.getAttribute("data-act");
-      const a = ACTIONS[id];
-      if (!a) continue;
-      els["btn:" + id] = btn;
-      const sub = btn.querySelector("small");
-      if (sub) els["sub:" + id] = sub;
+    for (const btn of deckEl.querySelectorAll("[data-act]")) wireButton(btn);
+    buildHardware();
 
-      const down = (e) => {
-        if (e && e.preventDefault) e.preventDefault();
-        if (e && e.pointerId != null && btn.setPointerCapture) {
-          try { btn.setPointerCapture(e.pointerId); } catch (err) {}
-        }
-        btn.classList.add("down");
-        if (a.hold) setHold(a.hold, true, DG.game);
-        else if (a.tap) { a.tap(DG.game); }
-      };
-      const up = (e) => {
-        if (e && e.preventDefault) e.preventDefault();
-        btn.classList.remove("down");
-        if (a.hold) setHold(a.hold, false, DG.game);
-      };
-      btn.addEventListener("pointerdown", down);
-      btn.addEventListener("pointerup", up);
-      btn.addEventListener("pointercancel", up);
-      btn.addEventListener("lostpointercapture", up);
-      /* a mouse-only browser never fires pointer events here, but keep click
-         as the safety net for the analytics-free browsers */
-      btn.addEventListener("contextmenu", (e) => e.preventDefault());
-      btn.addEventListener("dragstart", (e) => e.preventDefault());
-    }
+
 
     /* the first real touch turns the deck on, whatever the media queries said */
     const wake = () => enable();

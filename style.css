@@ -203,6 +203,7 @@ body.ready .deck { opacity: 1; }
   font-family: var(--ui-font); font-size: 13px; font-weight: 700;
   letter-spacing: .08em; text-transform: uppercase;
   touch-action: none; user-select: none; -webkit-user-select: none;
+  -webkit-touch-callout: none;
   transition: transform .07s ease, background .14s ease, border-color .14s ease,
               box-shadow .14s ease, opacity .14s;
 }
@@ -219,6 +220,38 @@ body.ready .deck { opacity: 1; }
 .btn.sq { font-size: 16px; }
 .btn.sq small { font-size: 9px; }
 .btn.wide { grid-column: 1 / -1; }
+.btn.half { grid-column: span 2; }
+
+/* ── the hardware bay: six generated buttons under the depot pad ────────── */
+.hstrip {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.hbtn {
+  min-height: 46px;
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
+  gap: 2px; padding: 6px 9px;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: rgba(255, 255, 255, .04);
+  color: var(--dim);
+  font-family: var(--ui-font); font-size: 10.5px; font-weight: 700;
+  letter-spacing: .07em; text-transform: uppercase; text-align: left;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  transition: background .14s ease, border-color .14s ease, color .14s ease, opacity .14s;
+}
+.hbtn span {
+  max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hbtn small {
+  font-family: var(--num-font); font-size: 10px; font-weight: 600;
+  letter-spacing: .04em; color: var(--faint);
+}
+.hbtn:active { background: rgba(255, 255, 255, .12); color: var(--ink); }
+.hbtn[disabled] { opacity: .32; }
+.hbtn:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
 
 .btn.drill {
   grid-column: span 2;
@@ -271,6 +304,7 @@ body.ready .deck { opacity: 1; }
   .btn { font-size: 12px; }
   .btn small { font-size: 9px; }
   .deck-head { flex-wrap: nowrap; }
+  .hstrip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .deck-head .chip { flex-direction: column; align-items: flex-start; gap: 2px; }
   .chip .v { margin-left: 0; font-size: 13px; }
   .chip .track { width: 100%; }

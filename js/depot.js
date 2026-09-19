@@ -199,14 +199,11 @@ DG.Depot = (function () {
 
     /* repair + winch */
     const need = Math.ceil(rig.hullMax - rig.hull);
-    const cost = need * 2;
+    const cost = rig.repairCost();
     if (U.button(g, { x: c.x + 5, y: c.y + 176, w: c.w - 10, h: 18 },
                  need ? `REPAIR HULL +${need} - ${cost} CR` : "HULL NOMINAL",
                  { id: "repair", disabled: need <= 0 || rig.credits < cost })) {
-      rig.credits -= cost;
-      rig.hull = rig.hullMax;
-      game.log(`HULL REPAIRED - ${cost} CR SPENT`, "good");
-      game.save();
+      if (rig.repair(game)) game.save();
     }
     const label = rig.depthRecord > 0
       ? `DESCEND TO ${Math.round(rig.depthRecord)} m`
