@@ -434,7 +434,17 @@
   (function () {
     const E = window.__AH_ERR = { lines: [], marks: [] };
     E.push = function (kind, msg) {
-      E.lines.push(`[${kind}] ${String(msg).slice(0, 400)}`);
+      const line = `[${kind}] ${String(msg).slice(0, 400)}`;
+      const last = E.lines[E.lines.length - 1];
+      if (last) {
+        const base = last.replace(/ \(x\d+\)$/, '');
+        if (base === line) {
+          const m = last.match(/ \(x(\d+)\)$/);
+          E.lines[E.lines.length - 1] = line + ' (x' + ((m ? parseInt(m[1], 10) : 1) + 1) + ')';
+          return;
+        }
+      }
+      E.lines.push(line);
       if (E.lines.length > 60) E.lines.shift();
     };
     window.__bootMark = (m) => { E.marks.push(m); const el = document.getElementById('boot-status'); if (el) el.textContent = m; };

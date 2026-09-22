@@ -65,11 +65,19 @@ const TIPS = [
     game.state = 'title';
 
     // ------------------------------------------------------------ main loop
+    let loopErrs = 0, loopErrWin = 0;
     const loop = () => {
       requestAnimationFrame(loop);
       try { game.frame(); } catch (e) {
-        if (!window.__fatalShown) { window.__fatalShown = true; fatal(e); }
+        const now = performance.now();
+        if (now - loopErrWin > 2000) { loopErrWin = now; loopErrs = 0; }
+        loopErrs++;
         console.error(e);
+        if (loopErrs >= 5) {
+          if (!window.__fatalShown) { window.__fatalShown = true; fatal(e); }
+        } else if (loopErrs === 1) {
+          try { screens.notify('Frame error: ' + (e && e.message || e), 'pink', 7000, true); } catch (_) {}
+        }
       }
     };
     requestAnimationFrame(loop);

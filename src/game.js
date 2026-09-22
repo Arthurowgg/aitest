@@ -324,6 +324,7 @@ export class Game {
 
   frameMenu(dt, t) {
     const s = this.showroom;
+    if (!s || !this.menuSky || !this.renderer) return;
     s.turntable += dt * (this.menuSpin ?? 0.25);
     if (s.car) {
       s.car.rotation.y = s.turntable + (this.menuCarYaw || 0);
@@ -335,7 +336,7 @@ export class Game {
     cam.position.set(Math.sin(a) * orbitR, 2.4 + Math.sin(t * 0.2) * 0.5 + (this.menuCamY || 0), Math.cos(a) * orbitR);
     cam.lookAt(0, 1.05 + (this.menuLookY || 0), 0);
     this.menuSky.update(t, cam.position);
-    this.menuSky.key.target.position.set(0, 1, 0);
+    if (s.key && s.key.target) s.key.target.position.set(0, 1, 0);
     this.renderer.scene = this.showroom.scene;
     this.renderer.renderPass.scene = this.showroom.scene;
   }
