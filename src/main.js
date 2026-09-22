@@ -52,7 +52,7 @@ const TIPS = [
     window.__SCREENS = screens;
     document.getElementById('hud').classList.toggle('no-hints', !!Save.s.hideHints);
     document.getElementById('boot-tip-text').textContent = TIPS[(Math.random() * TIPS.length) | 0];
-    document.getElementById('title-version').textContent = 'v1.0.0 · fan project';
+    document.getElementById('title-version').textContent = 'v1.0.1 · fan project';
 
     window.__bootMark && window.__bootMark('booting assets');
     await screens.withLoading(async (prog) => {

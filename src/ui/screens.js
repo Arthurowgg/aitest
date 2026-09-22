@@ -88,18 +88,23 @@ export class Screens {
     $('hud-xp-txt').textContent = `${fmtInt(d.xp)} / ${fmtInt(need)} XP`;
   }
 
+  safeBuild(fn, label) {
+    try { fn.call(this); }
+    catch (e) { console.error('[' + label + ']', e); this.notify(label + ' failed to build: ' + (e && e.message || e), 'pink'); }
+  }
+  safeAudio(fn) { try { fn(); } catch (e) { console.error('[audio]', e); } }
+
   // ------------------------------------------------------------------ bind
   bind() {
     const g = this.g;
     // title
     $('btn-press').onclick = () => {
-      Audio.init(); Audio.resume(); Audio.ui('select');
-      if (Save.s.musicOn) Audio.startMusic(0.55);
+      this.safeAudio(() => { Audio.init(); Audio.resume(); Audio.ui('select'); if (Save.s.musicOn) Audio.startMusic(0.55); });
       this.screen('screen-menu');
       g.state = 'menu';
-      this.refreshChips();
+      try { this.refreshChips(); } catch (e) { console.error('[chips]', e); }
       this.page('menu-home');
-      this.buildHome();
+      this.safeBuild(this.buildHome, 'Home');
     };
     // nav
     document.querySelectorAll('.nav-item').forEach((n) => {
@@ -107,12 +112,12 @@ export class Screens {
         Audio.ui('click');
         const id = n.dataset.goto;
         this.page(id);
-        if (id === 'menu-garage') { this.buildGarage(); g.setShowroomCar(this.garageSel); }
-        if (id === 'menu-events') this.buildEvents();
-        if (id === 'menu-freeroam') this.buildRoam();
-        if (id === 'menu-career') this.buildCareer();
-        if (id === 'menu-settings') this.buildSettings('settings-cols');
-        if (id === 'menu-home') this.buildHome();
+        if (id === 'menu-garage') { this.safeBuild(this.buildGarage, 'Garage'); try { g.setShowroomCar(this.garageSel); } catch (e) { console.error('[showroom]', e); } }
+        if (id === 'menu-events') this.safeBuild(this.buildEvents, 'Events');
+        if (id === 'menu-freeroam') this.safeBuild(this.buildRoam, 'Free roam');
+        if (id === 'menu-career') this.safeBuild(this.buildCareer, 'Career');
+        if (id === 'menu-settings') this.safeBuild(() => this.buildSettings('settings-cols'), 'Settings');
+        if (id === 'menu-home') this.safeBuild(this.buildHome, 'Home');
       };
     });
     $('btn-settings-top').onclick = () => { Audio.ui('click'); this.page('menu-settings'); this.buildSettings('settings-cols'); };
@@ -281,8 +286,11 @@ export class Screens {
   }
 
   async startRace() {
-    if (!this.currentEvent) return;
-    Audio.ui('select');
+    if (!this.currentEvent) {
+      this.currentEvent = EVENT_LIST.find((e) => Save.data.unlockedEvents.includes(e.id)) || EVENT_LIST[0];
+    }
+    if (!this.currentEvent) { this.notify('No event available', 'pink'); return; }
+    this.safeAudio(() => Audio.ui('select'));
     this.screen(null);
     await this.withLoading(async (prog) => {
       await this.g.startEvent(this.currentEvent.id, {
@@ -290,7 +298,7 @@ export class Screens {
         carId: Save.data.active, onStep: (l, f) => prog(0.15 + f * 0.8, l),
       });
     });
-    this.g.state = 'playing';
+    this.g.state = this.g.session ? 'playing' : 'menu';
   }
 
   // ------------------------------------------------------------------ garage
@@ -461,14 +469,16 @@ export class Screens {
     this.refreshChips();
   }
   async startRoam() {
-    Audio.ui('select');
-    this.screen(null);
+    this.safeAudio(() => Audio.ui('select'));
+    if (!this.roamMap || !MAP_DEFS[this.roamMap]) this.roamMap = Object.keys(MAP_DEFS)[0];
     const def = MAP_DEFS[this.roamMap];
-    const spot = def.spots[this.roamSpot ?? 0];
+    const spot = def.spots[this.roamSpot ?? 0] || def.spots[0];
+    if (!spot) { this.notify('No free-roam spot on this map', 'pink'); return; }
+    this.screen(null);
     await this.withLoading(async (prog) => {
       await this.g.startRoam(this.roamMap, spot, { onStep: (l, f) => prog(0.15 + f * 0.8, l) });
     });
-    this.g.state = 'playing';
+    this.g.state = this.g.session ? 'playing' : 'menu';
   }
 
   // ------------------------------------------------------------------ career
@@ -588,7 +598,8 @@ export class Screens {
     const g = this.g;
     g.paused = false;
     if (g.mode === 'race') {
-      const ev = g.session.event;
+      const ev = g.session && g.session.event;
+      if (!ev) { this.notify('No active event to restart', 'pink'); return; }
       this.withLoading(async (prog) => {
         await g.startEvent(ev.id, { difficulty: this.setup.difficulty, laps: this.setup.laps, rivals: this.setup.rivals, carId: Save.data.active, onStep: (l, f) => prog(f, l) });
       });

@@ -58,7 +58,7 @@
       <button class="btn btn--hero" id="btn-press"><span>PRESS START</span><em><img src="assets/icons/i-play.png" alt="" /></em></button>
       <div class="title-foot">
         <span><img src="assets/icons/i-gamepad.png" alt="" /> Gamepad: sticks steer · RT gas · LT brake · X drift · RB nitro · Y cam · Start pause</span>
-        <span id="title-version">v1.0.0</span>
+        <span id="title-version">v1.0.1</span>
       </div>
     </div>
   </section>
@@ -450,8 +450,21 @@
     window.__bootMark = (m) => { E.marks.push(m); const el = document.getElementById('boot-status'); if (el) el.textContent = m; };
     const hook = (fn, kind) => function (...a) { try { E.push(kind, a.map((x) => (x && x.message) ? x.message : (typeof x === 'object' ? JSON.stringify(x) : x)).join(' ')); } catch (e) {} return fn.apply(this, a); };
     if (window.console) { console.error = hook(console.error.bind(console), 'console.error'); console.warn = hook(console.warn.bind(console), 'console.warn'); }
-    addEventListener('error', (e) => E.push('window.error', (e.message || '') + ' @' + (e.filename || '').split('/').pop() + ':' + (e.lineno || 0)), true);
-    addEventListener('unhandledrejection', (e) => E.push('unhandledrejection', (e.reason && e.reason.message) || e.reason), true);
+    const visErr = function (msg) {
+      try {
+        const now = Date.now();
+        if (window.__SCREENS && window.__SCREENS.notify && now - (visErr._t || 0) > 4000) {
+          visErr._t = now;
+          window.__SCREENS.notify('Error: ' + msg + ' — click COPY, then tell the dev', 'pink');
+        }
+      } catch (e) {}
+    };
+    addEventListener('error', (e) => { E.push('window.error', (e.message || '') + ' @' + (e.filename || '').split('/').pop() + ':' + (e.lineno || 0)); visErr(e.message || 'script error'); }, true);
+    addEventListener('unhandledrejection', (e) => { E.push('unhandledrejection', (e.reason && e.reason.message) || e.reason); visErr((e.reason && e.reason.message) || 'promise rejected'); }, true);
+    // network-first service worker: always run the latest deployed build
+    if ('serviceWorker' in navigator) {
+      addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+    }
 
     E.report = function (extra) {
       const g = window.__GAME;
@@ -508,6 +521,6 @@
     }
   }, 25000);
 </script>
-<script type="module" src="src/main.js"></script>
+<script type="module" src="src/main.js?v=1.0.1"></script>
 </body>
 </html>
