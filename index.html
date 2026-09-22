@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>APEX HORIZON — Japan Festival</title>
+<meta name="description" content="APEX HORIZON: Japan Festival — an open-world 3D street racing game." />
+<link rel="icon" type="image/png" href="assets/icons/favicon.png" />
+<link rel="stylesheet" href="styles/main.css" />
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/lib/three.module.js",
+    "three/addons/": "./vendor/three/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ 3D VIEWPORT (single canvas for menus + gameplay) ============ -->
+  <canvas id="gl"></canvas>
+
+  <!-- film grain / scanline / vignette overlay -->
+  <div id="fx-overlay" aria-hidden="true"></div>
+  <div id="speed-lines" aria-hidden="true"><div class="sl"></div><div class="sl"></div><div class="sl"></div><div class="sl"></div><div class="sl"></div><div class="sl"></div><div class="sl"></div><div class="sl"></div><div class="sl"></div><div class="sl"></div><div class="sl"></div><div class="sl"></div></div>
+
+  <!-- ============ BOOT / LOADING ============ -->
+  <section id="screen-boot" class="screen screen--boot active">
+    <div class="boot-bg"></div>
+    <div class="boot-inner">
+      <img id="boot-logo" class="boot-logo" src="assets/icons/logo.png" alt="APEX HORIZON" />
+      <div class="boot-sub">JAPAN FESTIVAL</div>
+      <div class="boot-bar"><div class="boot-bar-fill" id="boot-bar-fill"></div><div class="boot-bar-glow"></div></div>
+      <div class="boot-meta">
+        <span id="boot-status">Initialising engine…</span>
+        <span id="boot-pct">0%</span>
+      </div>
+      <div class="boot-tip">
+        <span class="boot-tip-label"><img src="assets/icons/i-bulb.png" alt="" /> TIP</span>
+        <span id="boot-tip-text">Tap the handbrake mid-corner to break traction and hold a drift.</span>
+      </div>
+    </div>
+    <div class="boot-legal">Fan-made project inspired by open-world festival racers · Not affiliated with any real brand</div>
+  </section>
+
+  <!-- ============ TITLE ============ -->
+  <section id="screen-title" class="screen screen--title">
+    <div class="title-art" id="title-art"></div>
+    <div class="title-scrim"></div>
+    <div class="title-content">
+      <img class="title-logo" src="assets/icons/logo.png" alt="APEX HORIZON" />
+      <div class="title-tag">JAPAN FESTIVAL &nbsp;·&nbsp; OPEN WORLD STREET RACING</div>
+      <button class="btn btn--hero" id="btn-press"><span>PRESS START</span><em><img src="assets/icons/i-play.png" alt="" /></em></button>
+      <div class="title-foot">
+        <span><img src="assets/icons/i-gamepad.png" alt="" /> Gamepad: sticks steer · RT gas · LT brake · X drift · RB nitro · Y cam · Start pause</span>
+        <span id="title-version">v1.0.0</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ MAIN MENU ============ -->
+  <section id="screen-menu" class="screen screen--menu">
+    <div class="menu-veil"></div>
+    <header class="topbar">
+      <div class="topbar-left">
+        <img class="topbar-logo" src="assets/icons/logo-small.png" alt="APEX HORIZON" />
+      </div>
+      <div class="topbar-right" id="player-chip">
+        <div class="chip chip--level"><span class="chip-k">LVL</span><span class="chip-v" id="hud-level">1</span></div>
+        <div class="xp-wrap"><div class="xp-bar"><div class="xp-fill" id="hud-xp-fill"></div></div><span class="xp-txt" id="hud-xp-txt">0 / 1000 XP</span></div>
+        <div class="chip chip--credits"><img src="assets/icons/i-credits.png" alt="" /><span id="hud-credits">0</span><em>CR</em></div>
+        <button class="iconbtn" id="btn-settings-top" title="Settings"><img src="assets/icons/i-settings.png" alt="Settings" /></button>
+      </div>
+    </header>
+
+    <nav class="menu-nav" id="menu-nav">
+      <button class="nav-item is-active" data-goto="menu-home">
+        <img src="assets/icons/i-home.png" alt="" /><span class="nav-t">Festival</span><span class="nav-s">Overview</span>
+      </button>
+      <button class="nav-item" data-goto="menu-events">
+        <img src="assets/icons/i-flag.png" alt="" /><span class="nav-t">Events</span><span class="nav-s">Race calendar</span>
+      </button>
+      <button class="nav-item" data-goto="menu-garage">
+        <img src="assets/icons/i-car.png" alt="" /><span class="nav-t">Garage</span><span class="nav-s">Cars &amp; tuning</span>
+      </button>
+      <button class="nav-item" data-goto="menu-freeroam">
+        <img src="assets/icons/i-map.png" alt="" /><span class="nav-t">Free Roam</span><span class="nav-s">Explore the island</span>
+      </button>
+      <button class="nav-item" data-goto="menu-career">
+        <img src="assets/icons/i-trophy.png" alt="" /><span class="nav-t">Career</span><span class="nav-s">Stats &amp; awards</span>
+      </button>
+      <button class="nav-item" data-goto="menu-settings">
+        <img src="assets/icons/i-settings.png" alt="" /><span class="nav-t">Settings</span><span class="nav-s">Graphics · audio · controls</span>
+      </button>
+    </nav>
+
+    <div class="menu-stage">
+      <!-- HOME -->
+      <div class="panel panel--home menu-page active" id="menu-home">
+        <div class="panel-head">
+          <h1>HORIZON <em>FESTIVAL</em></h1>
+          <p class="kicker">Welcome to the island. Pick a car, pick a road, and make it yours.</p>
+        </div>
+        <div class="home-grid">
+          <button class="home-card home-card--big" data-quick="freeroam">
+            <img class="hc-art" src="assets/art/poster_island.jpg" alt="" />
+            <div class="hc-body">
+              <span class="hc-tag">OPEN WORLD</span>
+              <strong>Free Roam</strong>
+              <p>Drive the whole island: speed traps, drift zones, jumps and festival outposts.</p>
+              <span class="hc-go"><img src="assets/icons/i-play.png" alt="" /> DRIVE NOW</span>
+            </div>
+          </button>
+          <button class="home-card" data-quick="race">
+            <img class="hc-art" src="assets/art/poster_city.jpg" alt="" />
+            <div class="hc-body">
+              <span class="hc-tag">FEATURED EVENT</span>
+              <strong id="home-featured">Shibuya Neon Circuit</strong>
+              <p id="home-featured-sub">Night street race · 3 laps · 5 rivals</p>
+              <span class="hc-go"><img src="assets/icons/i-flag.png" alt="" /> ENTER RACE</span>
+            </div>
+          </button>
+          <div class="home-stats">
+            <div class="hstat"><img src="assets/icons/i-trophy.png" alt="" /><span class="hstat-v" id="home-wins">0</span><span class="hstat-k">Wins</span></div>
+            <div class="hstat"><img src="assets/icons/i-speed.png" alt="" /><span class="hstat-v" id="home-top">0</span><span class="hstat-k">Top speed</span></div>
+            <div class="hstat"><img src="assets/icons/i-drift.png" alt="" /><span class="hstat-v" id="home-drift">0</span><span class="hstat-k">Drift score</span></div>
+            <div class="hstat"><img src="assets/icons/i-car.png" alt="" /><span class="hstat-v" id="home-cars">1</span><span class="hstat-k">Cars owned</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- EVENTS -->
+      <div class="panel menu-page" id="menu-events">
+        <div class="panel-head">
+          <h1>RACE <em>EVENTS</em></h1>
+          <p class="kicker">Four circuits across the festival island. Win to earn credits, XP and unlocks.</p>
+        </div>
+        <div class="events-wrap">
+          <div class="map-tabs" id="map-tabs"></div>
+          <div class="map-preview">
+            <img id="map-poster" src="assets/art/poster_city.jpg" alt="" />
+            <div class="map-preview-info">
+              <h2 id="map-name">Shibuya Neon Circuit</h2>
+              <p id="map-desc">Rain-slicked downtown streets under a canyon of neon.</p>
+              <ul class="map-facts" id="map-facts"></ul>
+            </div>
+          </div>
+          <div class="event-list" id="event-list"></div>
+          <div class="race-setup" id="race-setup">
+            <h3>Race setup</h3>
+            <div class="setup-row">
+              <label>Difficulty</label>
+              <div class="seg" id="seg-difficulty">
+                <button data-v="0">Rookie</button><button data-v="1" class="on">Pro</button><button data-v="2">Expert</button><button data-v="3">Unbeatable</button>
+              </div>
+            </div>
+            <div class="setup-row">
+              <label>Laps</label>
+              <div class="seg" id="seg-laps">
+                <button data-v="1">1</button><button data-v="2">2</button><button data-v="3" class="on">3</button><button data-v="5">5</button>
+              </div>
+            </div>
+            <div class="setup-row">
+              <label>Rivals</label>
+              <div class="seg" id="seg-rivals">
+                <button data-v="0">Solo</button><button data-v="3">3</button><button data-v="5" class="on">5</button><button data-v="7">7</button>
+              </div>
+            </div>
+            <div class="setup-row">
+              <label>Assists</label>
+              <div class="seg" id="seg-assists">
+                <button data-v="full" class="on">Full</button><button data-v="sim">Simulation</button>
+              </div>
+            </div>
+            <div class="setup-row">
+              <label>Car</label>
+              <div class="setup-car">
+                <img id="setup-car-thumb" src="assets/icons/i-car.png" alt="" />
+                <div><strong id="setup-car-name">Kurogane R-Spec</strong><span id="setup-car-class">Class B · 612 PI</span></div>
+                <button class="btn btn--ghost btn--sm" id="btn-change-car">CHANGE</button>
+              </div>
+            </div>
+            <button class="btn btn--primary btn--wide" id="btn-start-race"><img src="assets/icons/i-flag.png" alt="" /> START RACE</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- GARAGE -->
+      <div class="panel panel--garage menu-page" id="menu-garage">
+        <div class="panel-head">
+          <h1>THE <em>GARAGE</em></h1>
+          <p class="kicker">Inspect, buy, paint and upgrade your stable.</p>
+        </div>
+        <div class="garage-wrap">
+          <aside class="garage-list" id="garage-list"></aside>
+          <div class="garage-main">
+            <div class="garage-hero">
+              <div class="garage-hero-info">
+                <span class="g-class" id="g-class">CLASS B</span>
+                <h2 id="g-name">Kurogane R-Spec</h2>
+                <p id="g-maker">Sato Motors · 1998 · Japan</p>
+                <div class="g-pi"><span id="g-pi">612</span><em>PERFORMANCE INDEX</em></div>
+                <div class="g-stats" id="g-stats"></div>
+                <div class="g-actions">
+                  <button class="btn btn--primary" id="g-buy"><img src="assets/icons/i-credits.png" alt="" /> BUY</button>
+                  <button class="btn btn--ghost" id="g-paint"><img src="assets/icons/i-paint.png" alt="" /> PAINT</button>
+                  <button class="btn btn--ghost" id="g-upgrade"><img src="assets/icons/i-wrench.png" alt="" /> UPGRADE</button>
+                  <button class="btn btn--accent" id="g-select"><img src="assets/icons/i-play.png" alt="" /> SET ACTIVE</button>
+                </div>
+              </div>
+              <div class="garage-viewer-hint"><img src="assets/icons/i-rotate.png" alt="" /> Drag to rotate · Scroll to zoom</div>
+            </div>
+            <div class="garage-sub" id="garage-sub"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FREE ROAM -->
+      <div class="panel menu-page" id="menu-freeroam">
+        <div class="panel-head">
+          <h1>FREE <em>ROAM</em></h1>
+          <p class="kicker">The whole island, no rules. Fast-travel anywhere or drive from your current position.</p>
+        </div>
+        <div class="roam-wrap">
+          <div class="roam-map">
+            <canvas id="roam-canvas" width="720" height="720"></canvas>
+            <div class="roam-legend">
+              <span><i class="dot dot--you"></i> You</span>
+              <span><i class="dot dot--trap"></i> Speed trap</span>
+              <span><i class="dot dot--zone"></i> Drift zone</span>
+              <span><i class="dot dot--jump"></i> Danger jump</span>
+              <span><i class="dot dot--fest"></i> Festival site</span>
+            </div>
+          </div>
+          <div class="roam-side">
+            <h3>Fast travel</h3>
+            <div class="roam-spots" id="roam-spots"></div>
+            <button class="btn btn--primary btn--wide" id="btn-start-roam"><img src="assets/icons/i-play.png" alt="" /> DRIVE</button>
+            <div class="roam-acts">
+              <div class="ract"><img src="assets/icons/i-speed.png" alt="" /><span>Speed traps</span><b id="ract-traps">0/0</b></div>
+              <div class="ract"><img src="assets/icons/i-drift.png" alt="" /><span>Drift zones</span><b id="ract-zones">0/0</b></div>
+              <div class="ract"><img src="assets/icons/i-jump.png" alt="" /><span>Jumps</span><b id="ract-jumps">0/0</b></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CAREER -->
+      <div class="panel menu-page" id="menu-career">
+        <div class="panel-head">
+          <h1>CAREER <em>STATS</em></h1>
+          <p class="kicker">Your festival record so far.</p>
+        </div>
+        <div class="career-grid" id="career-grid"></div>
+        <div class="awards" id="awards"></div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div class="panel menu-page" id="menu-settings">
+        <div class="panel-head">
+          <h1>SET<em>TINGS</em></h1>
+          <p class="kicker">Graphics, audio and controls. Changes apply instantly.</p>
+        </div>
+        <div class="settings-cols" id="settings-cols"></div>
+      </div>
+    </div>
+
+    <footer class="menu-foot">
+      <span class="foot-hint"><img src="assets/icons/i-mouse.png" alt="" /> Click to select</span>
+      <span class="foot-hint"><img src="assets/icons/i-keys.png" alt="" /> WASD/Arrows drive · SPACE handbrake · SHIFT boost · C camera · ESC pause</span>
+      <span class="foot-hint" id="foot-fps">— FPS</span>
+    </footer>
+  </section>
+
+  <!-- ============ IN-GAME HUD ============ -->
+  <div id="hud" class="hud hidden">
+    <div class="hud-top-left">
+      <div class="race-clock" id="race-clock">
+        <div class="rc-row"><span class="rc-k">POS</span><span class="rc-v" id="rc-pos">1<em>/6</em></span></div>
+        <div class="rc-row"><span class="rc-k">LAP</span><span class="rc-v" id="rc-lap">1<em>/3</em></span></div>
+        <div class="rc-times">
+          <div><span>CUR</span><b id="rc-cur">0:00.00</b></div>
+          <div><span>LAST</span><b id="rc-last">--:--.--</b></div>
+          <div><span>BEST</span><b id="rc-best" class="best">--:--.--</b></div>
+          <div><span>TOTAL</span><b id="rc-total">0:00.00</b></div>
+        </div>
+      </div>
+      <div class="hud-event" id="hud-event">
+        <img src="assets/icons/i-flag.png" alt="" />
+        <div><strong id="hud-event-name">Free Roam</strong><span id="hud-event-sub">Shibuya Neon Circuit · 3 laps</span></div>
+      </div>
+    </div>
+
+    <div class="hud-top-center">
+      <div id="countdown" class="countdown hidden">3</div>
+      <div id="toast-stack" class="toast-stack"></div>
+      <div id="bigmsg" class="bigmsg hidden"><b id="bigmsg-main"></b><span id="bigmsg-sub"></span></div>
+      <div id="wrongway" class="wrongway hidden"><img src="assets/icons/i-warn.png" alt="" /> WRONG WAY</div>
+    </div>
+
+    <div class="hud-top-right">
+      <div class="standings" id="standings"></div>
+      <div class="hud-chips">
+        <div class="chip chip--credits"><img src="assets/icons/i-credits.png" alt="" /><span id="hud2-credits">0</span><em>CR</em></div>
+        <div class="chip chip--level"><span class="chip-k">LVL</span><span class="chip-v" id="hud2-level">1</span></div>
+      </div>
+      <div class="roam-stats" id="roam-stats">
+        <div><img src="assets/icons/i-speed.png" alt="" /><span>Trap</span><b id="rs-trap">0</b></div>
+        <div><img src="assets/icons/i-drift.png" alt="" /><span>Drift</span><b id="rs-drift">0</b></div>
+        <div><img src="assets/icons/i-jump.png" alt="" /><span>Air</span><b id="rs-air">0</b></div>
+        <div><img src="assets/icons/i-star.png" alt="" /><span>Score</span><b id="rs-score">0</b></div>
+      </div>
+    </div>
+
+    <div class="hud-bottom-left">
+      <canvas id="minimap" width="340" height="340"></canvas>
+      <div class="mm-legend" id="mm-legend">
+        <span id="mm-place">Shibuya</span>
+        <span id="mm-dist">0 m to next checkpoint</span>
+      </div>
+    </div>
+
+    <div class="hud-bottom-center">
+      <div class="boost-wrap" id="boost-wrap">
+        <div class="boost-bar"><div class="boost-fill" id="boost-fill"></div></div>
+        <span class="boost-label"><img src="assets/icons/i-bolt.png" alt="" /> NITRO</span>
+      </div>
+      <div class="drift-pop hidden" id="drift-pop"><b id="drift-pop-score">0</b><span id="drift-pop-mult">x1.0</span></div>
+      <div class="assist-strip" id="assist-strip"></div>
+    </div>
+
+    <div class="hud-bottom-right">
+      <canvas id="speedo" width="440" height="440"></canvas>
+      <div class="gear-cluster">
+        <div class="gear" id="gear-indicator">N</div>
+        <div class="odo">
+          <span id="odo-speed">0</span><em id="odo-unit">KM/H</em>
+        </div>
+      </div>
+    </div>
+
+    <div class="hud-hints" id="hud-hints">
+      <span><b>C</b> camera</span><span><b>H</b> hide HUD</span><span><b>R</b> reset</span><span><b>F1</b> photo</span><span><b>ESC</b> pause</span>
+    </div>
+  </div>
+
+  <!-- ============ PAUSE ============ -->
+  <section id="screen-pause" class="screen screen--modal">
+    <div class="modal">
+      <h2>PAUSED</h2>
+      <div class="pause-grid">
+        <button class="btn btn--primary" id="p-resume"><img src="assets/icons/i-play.png" alt="" /> RESUME</button>
+        <button class="btn btn--ghost" id="p-restart"><img src="assets/icons/i-restart.png" alt="" /> RESTART EVENT</button>
+        <button class="btn btn--ghost" id="p-photo"><img src="assets/icons/i-camera.png" alt="" /> PHOTO MODE</button>
+        <button class="btn btn--ghost" id="p-settings"><img src="assets/icons/i-settings.png" alt="" /> SETTINGS</button>
+        <button class="btn btn--ghost" id="p-garage"><img src="assets/icons/i-car.png" alt="" /> SWAP CAR</button>
+        <button class="btn btn--danger" id="p-quit"><img src="assets/icons/i-exit.png" alt="" /> QUIT TO FESTIVAL</button>
+      </div>
+      <div class="pause-mini" id="pause-mini"></div>
+    </div>
+  </section>
+
+  <!-- ============ RESULTS ============ -->
+  <section id="screen-results" class="screen screen--modal">
+    <div class="modal modal--wide">
+      <div class="res-head">
+        <span class="res-badge" id="res-badge">1ST</span>
+        <div>
+          <h2 id="res-title">EVENT COMPLETE</h2>
+          <p id="res-sub">Shibuya Neon Circuit · 3 laps · Pro difficulty</p>
+        </div>
+      </div>
+      <table class="res-table" id="res-table"></table>
+      <div class="res-rewards" id="res-rewards"></div>
+      <div class="res-actions">
+        <button class="btn btn--primary" id="r-retry"><img src="assets/icons/i-restart.png" alt="" /> RETRY</button>
+        <button class="btn btn--ghost" id="r-next"><img src="assets/icons/i-flag.png" alt="" /> NEXT EVENT</button>
+        <button class="btn btn--ghost" id="r-roam"><img src="assets/icons/i-map.png" alt="" /> FREE ROAM</button>
+        <button class="btn btn--accent" id="r-menu"><img src="assets/icons/i-home.png" alt="" /> FESTIVAL</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PHOTO MODE ============ -->
+  <div id="photo-ui" class="photo-ui hidden">
+    <div class="photo-top">
+      <span class="photo-title"><img src="assets/icons/i-camera.png" alt="" /> PHOTO MODE</span>
+      <span class="photo-hint">Drag = orbit · WASD = move · Q/E = roll · Wheel = zoom · Enter = shoot</span>
+    </div>
+    <div class="photo-bottom" id="photo-bottom"></div>
+  </div>
+
+  <!-- ============ SETTINGS MODAL (from pause) ============ -->
+  <section id="screen-settings-modal" class="screen screen--modal">
+    <div class="modal modal--wide">
+      <h2>SETTINGS</h2>
+      <div class="settings-cols" id="settings-cols-modal"></div>
+      <div class="res-actions"><button class="btn btn--primary" id="sm-close">CLOSE</button></div>
+    </div>
+  </section>
+
+  <!-- ============ GARAGE MODAL (from pause) ============ -->
+  <section id="screen-garage-modal" class="screen screen--modal">
+    <div class="modal modal--wide">
+      <h2>SWAP CAR</h2>
+      <div class="quick-garage" id="quick-garage"></div>
+      <div class="res-actions"><button class="btn btn--primary" id="gm-close">CLOSE</button></div>
+    </div>
+  </section>
+
+  <!-- ============ FATAL / INFO ============ -->
+  <div id="fatal" class="fatal hidden"><div class="fatal-box"><h3>Unable to start</h3><p id="fatal-msg"></p></div></div>
+
+  <div id="cursor-glow" aria-hidden="true"></div>
+</div>
+
+<script>
+  // boot watchdog — if the module graph or assets stall, say so instead of spinning forever
+  window.__bootMarks = [];
+  window.__bootMark = (m) => { window.__bootMarks.push(m); const el = document.getElementById('boot-status'); if (el) el.textContent = m; };
+  setTimeout(() => {
+    if (!window.__GAME) {
+      const el = document.getElementById('boot-status');
+      const pct = document.getElementById('boot-pct');
+      if (el && !window.__GAME) {
+        el.textContent = 'Stalled: engine modules did not load. Hard-reload (Ctrl+Shift+R). Marks: ' + (window.__bootMarks.join(' > ') || 'none');
+        if (pct) pct.textContent = '!';
+      }
+    }
+  }, 25000);
+  window.addEventListener('error', (e) => {
+    window.__bootMarks.push('err:' + (e.message || '').slice(0, 80));
+    const el = document.getElementById('boot-status');
+    if (el && !window.__GAME) el.textContent = 'Error: ' + (e.message || 'unknown') + ' — reload to retry';
+  }, true);
+</script>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
