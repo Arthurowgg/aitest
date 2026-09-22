@@ -211,5 +211,53 @@ console.log('== AI driver sanity ==');
   ok(prog > 200, `AI completed distance (s=${Math.round(prog)}m of ${Math.round(w.main.length)}m)`);
 }
 
+console.log('== frame loop smoke (regression: menuSky.key crash) ==');
+{
+  const { Game } = await import('../src/game.js');
+  const { default: Save } = await import('../src/core/save.js');
+  const fakeGameRenderer = {
+    q: QUALITY.high, qualityName: 'high', fps: 60, onFps: null, onFallback: null,
+    renderer: { capabilities: { getMaxAnisotropy: () => 8 } },
+    scene: new THREE.Scene(),
+    camera: new THREE.PerspectiveCamera(72, 1, 0.35, 4000),
+    renderPass: { scene: null },
+    grade: { uniforms: {
+      tDiffuse: { value: null }, uTime: { value: 0 }, uSpeed: { value: 0 }, uVignette: { value: 0.42 },
+      uGrain: { value: 0.055 }, uSat: { value: 1.08 }, uContrast: { value: 1.06 }, uFlash: { value: 0 },
+      uFlashColor: { value: new THREE.Color(0x88ddff) }, uTint: { value: new THREE.Color(1, 1, 1) }, uFade: { value: 0 },
+    } },
+    beginFrame() {}, render() {}, resize() {},
+    setQuality() {}, setScene(s) { this.scene = s; this.renderPass.scene = s; },
+    setFog() {}, setExposure() {},
+  };
+  fakeGameRenderer.renderPass.scene = fakeGameRenderer.scene;
+  // keep assets headless-instant: no textures (same conditions worlds were built under)
+  const realLoad = Assets.load.bind(Assets);
+  Assets.load = async () => Assets.tex;
+  const game = new Game(null, fakeGameRenderer);
+  try {
+    await game.boot(() => {});
+    game.setShowroomCar(Save.data.active);
+    game.clock.getDelta = () => 1 / 60; // deterministic dt
+    const runFrames = (nn, label) => {
+      try { for (let i = 0; i < nn; i++) game.frame(); ok(true, `${label}: ${nn} frames clean`); }
+      catch (e) { ok(false, `${label} frame crashed: ${e.message} @ ${(e.stack.split('\n')[1] || '').trim()}`); }
+    };
+    game.state = 'title'; runFrames(30, 'title loop');
+    game.state = 'menu'; runFrames(30, 'menu loop');
+    await game.startEvent(EVENT_LIST[0].id, { rivals: 3, laps: 1 });
+    runFrames(600, 'race loop (10s sim)');
+    game.paused = true; runFrames(10, 'paused loop'); game.paused = false;
+    game.state = 'photo'; runFrames(10, 'photo loop'); game.state = 'playing';
+    await game.startRoam(game.world.key);
+    runFrames(120, 'roam loop');
+    game.quitToMenu(); runFrames(10, 'quit-to-menu loop');
+  } catch (e) {
+    ok(false, `smoke boot/start crashed: ${e.message} @ ${(e.stack.split('\n')[1] || '').trim()}`);
+  } finally {
+    Assets.load = realLoad;
+  }
+}
+
 console.log(fail === 0 ? '\nALL TESTS PASSED' : `\n${fail} FAILURES`);
 process.exit(fail ? 1 : 0);

@@ -8,6 +8,7 @@ class AudioEngine {
   constructor() {
     this.ready = false;
     this.vol = { master: 0.9, engine: 0.85, sfx: 0.8, music: 0.55, ui: 0.7 };
+    this.bus = {};   // safe before init(): setVolume just records levels
     this.enabled = true;
   }
 
@@ -39,7 +40,7 @@ class AudioEngine {
     this.ready = true;
   }
   resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
-  setVolume(k, v) { this.vol[k] = v; if (this.bus[k]) this.bus[k].gain.value = v; if (k === 'master' && this.master) this.master.gain.value = v; }
+  setVolume(k, v) { this.vol[k] = v; if (this.bus && this.bus[k]) this.bus[k].gain.value = v; if (k === 'master' && this.master) this.master.gain.value = v; }
 
   // ---------------------------------------------------------------- engine
   buildEngine() {

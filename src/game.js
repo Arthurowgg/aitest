@@ -26,8 +26,8 @@ const CORE_TEX = ['asphalt', 'asphaltN', 'asphaltR', 'asphaltWet', 'asphaltWetR'
 const CAM_MODES = ['chase', 'hood', 'cockpit', 'cinematic'];
 
 export class Game {
-  constructor(canvas) {
-    this.renderer = new GameRenderer(canvas);
+  constructor(canvas, rendererOverride = null) {
+    this.renderer = rendererOverride || new GameRenderer(canvas);
     this.hud = new HUD();
     this.state = 'boot';
     this.world = null;
@@ -39,7 +39,7 @@ export class Game {
     this.camPos = new THREE.Vector3(0, 6, -14);
     this.camLook = new THREE.Vector3();
     this.shake = 0;
-    this.clock = new THREE.Clock();
+    this.clock = { _l: 0, getDelta() { const n = (typeof performance !== 'undefined' ? performance.now() : Date.now()); const d = this._l ? (n - this._l) / 1000 : 0; this._l = n; return d; } };
     this.time = 0;
     this._skid = null;
     this._smoke = null;
@@ -97,7 +97,7 @@ export class Game {
     }
     const pg = new THREE.BufferGeometry();
     pg.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-    sc.add(new THREE.Points(pg, new THREE.PointsMaterial({ map: Assets.tex.glow, size: 3.2, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: new THREE.Color(1.6, 0.5, 1.6) })));
+    sc.add(new THREE.Points(pg, new THREE.PointsMaterial({ map: Assets.tex.glow || Assets.white(), size: 3.2, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: new THREE.Color(1.6, 0.5, 1.6) })));
     // key lights
     const key = new THREE.SpotLight(0xbfe4ff, 300, 60, Math.PI / 5, 0.5, 1.2);
     key.position.set(10, 14, 8); key.castShadow = true; key.shadow.mapSize.set(1024, 1024);
@@ -150,11 +150,11 @@ export class Game {
     this.renderer.scene.add(world.group);
     this.renderer.scene.fog = new THREE.Fog(new THREE.Color(world.sky.preset.fog), 60, this.renderer.q.fogFar);
     // fx systems
-    this._skid = new SkidTrail(Assets.tex.skid, 1200, 0.3);
+    this._skid = new SkidTrail(Assets.tex.skid || Assets.white(), 1200, 0.3);
     world.group.add(this._skid.mesh);
-    this._smoke = new Emitter(Assets.tex.puff, 260, { gravity: 1.1, grow: 3.2, drag: 1.4, opacity: 0.85 });
+    this._smoke = new Emitter(Assets.tex.puff || Assets.white(), 260, { gravity: 1.1, grow: 3.2, drag: 1.4, opacity: 0.85 });
     world.group.add(this._smoke.cloud.points);
-    this._sparks = new Emitter(Assets.tex.glow, 120, { gravity: -9, grow: -0.2, drag: 0.6, blending: THREE.AdditiveBlending, opacity: 1 });
+    this._sparks = new Emitter(Assets.tex.glow || Assets.white(), 120, { gravity: -9, grow: -0.2, drag: 0.6, blending: THREE.AdditiveBlending, opacity: 1 });
     world.group.add(this._sparks.cloud.points);
     // minimap data
     const poly = [];
