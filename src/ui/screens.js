@@ -41,11 +41,14 @@ export class Screens {
       n.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:1500;pointer-events:none';
       document.getElementById('app').appendChild(n);
     }
+    const isErr = cls === 'pink';
     n.className = `toast ${cls}`;
-    n.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:1500;pointer-events:none';
-    n.innerHTML = `<img src="assets/icons/${cls === 'pink' ? 'i-warn' : 'i-gamepad'}.png" alt=""><span>${msg}</span>`;
+    n.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:1500;pointer-events:auto';
+    n.innerHTML = `<img src="assets/icons/${isErr ? 'i-warn' : 'i-gamepad'}.png" alt=""><span>${msg}</span>` +
+      (isErr ? `<button class="btn btn--ghost" data-copy-report data-copy-extra="${String(msg).replace(/"/g, '&quot;')}">COPY</button>` : '');
+    if (isErr && window.__AH_ERR) { window.__AH_ERR.push('notify', msg); window.__AH_ERR.bindAll(n); }
     clearTimeout(this._snackT);
-    this._snackT = setTimeout(() => n.remove(), 4200);
+    this._snackT = setTimeout(() => n.remove(), isErr ? 14000 : 4200);
   }
 
   async withLoading(fn) {

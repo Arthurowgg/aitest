@@ -570,6 +570,11 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;background:var(--cyan
 .fatal-box{max-width:560px;padding:30px;border:1px solid var(--red);background:rgba(30,6,10,.9)}
 .fatal-box h3{color:var(--red);font-size:20px;margin-bottom:10px;font-style:italic}
 .fatal-box p{font-size:13px;color:var(--ink-dim);line-height:1.6;font-family:var(--mono)}
+.fatal-box textarea{width:100%;height:160px;margin:12px 0;background:#080d16;color:#8fd8ff;border:1px solid var(--line);
+  font-family:var(--mono);font-size:10.5px;line-height:1.5;padding:10px;resize:vertical;outline:none}
+.fatal-box textarea:focus{border-color:var(--line-hot)}
+.fatal-actions{display:flex;gap:9px;flex-wrap:wrap}
+.toast .btn{padding:5px 10px;font-size:9.5px;letter-spacing:.1em;margin-left:8px}
 
 /* ============================================================================
    RESPONSIVE

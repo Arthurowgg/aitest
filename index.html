@@ -35,7 +35,10 @@
       <div class="boot-bar"><div class="boot-bar-fill" id="boot-bar-fill"></div><div class="boot-bar-glow"></div></div>
       <div class="boot-meta">
         <span id="boot-status">Initialising engine…</span>
-        <span id="boot-pct">0%</span>
+        <span style="display:flex;gap:8px;align-items:center">
+          <button id="boot-copy" class="btn btn--sm btn--ghost hidden" data-copy-report>COPY ERROR</button>
+          <span id="boot-pct">0%</span>
+        </span>
       </div>
       <div class="boot-tip">
         <span class="boot-tip-label"><img src="assets/icons/i-bulb.png" alt="" /> TIP</span>
@@ -411,30 +414,89 @@
   </section>
 
   <!-- ============ FATAL / INFO ============ -->
-  <div id="fatal" class="fatal hidden"><div class="fatal-box"><h3>Unable to start</h3><p id="fatal-msg"></p></div></div>
+  <div id="fatal" class="fatal hidden"><div class="fatal-box">
+  <h3>Unable to start</h3>
+  <p id="fatal-msg"></p>
+  <textarea id="fatal-report" readonly spellcheck="false" placeholder="diagnostic report…"></textarea>
+  <div class="fatal-actions">
+    <button id="fatal-copy" class="btn btn--primary" data-copy-report>COPY ERROR REPORT</button>
+    <button id="fatal-reload" class="btn btn--ghost">RELOAD</button>
+  </div>
+</div></div>
 
   <div id="cursor-glow" aria-hidden="true"></div>
 </div>
 
 <script>
-  // boot watchdog — if the module graph or assets stall, say so instead of spinning forever
-  window.__bootMarks = [];
-  window.__bootMark = (m) => { window.__bootMarks.push(m); const el = document.getElementById('boot-status'); if (el) el.textContent = m; };
+  // ------------------------------------------------------------------
+  // APEX HORIZON diagnostics: ring buffer of errors + COPY REPORT button
+  // ------------------------------------------------------------------
+  (function () {
+    const E = window.__AH_ERR = { lines: [], marks: [] };
+    E.push = function (kind, msg) {
+      E.lines.push(`[${kind}] ${String(msg).slice(0, 400)}`);
+      if (E.lines.length > 60) E.lines.shift();
+    };
+    window.__bootMark = (m) => { E.marks.push(m); const el = document.getElementById('boot-status'); if (el) el.textContent = m; };
+    const hook = (fn, kind) => function (...a) { try { E.push(kind, a.map((x) => (x && x.message) ? x.message : (typeof x === 'object' ? JSON.stringify(x) : x)).join(' ')); } catch (e) {} return fn.apply(this, a); };
+    if (window.console) { console.error = hook(console.error.bind(console), 'console.error'); console.warn = hook(console.warn.bind(console), 'console.warn'); }
+    addEventListener('error', (e) => E.push('window.error', (e.message || '') + ' @' + (e.filename || '').split('/').pop() + ':' + (e.lineno || 0)), true);
+    addEventListener('unhandledrejection', (e) => E.push('unhandledrejection', (e.reason && e.reason.message) || e.reason), true);
+
+    E.report = function (extra) {
+      const g = window.__GAME;
+      const gl = (() => { try { const c = document.createElement('canvas'); const x = c.getContext('webgl2') || c.getContext('webgl'); const d = x.getExtension('WEBGL_debug_renderer_info'); return d ? x.getParameter(d.UNMASKED_RENDERER_WEBGL) : 'n/a'; } catch (e) { return 'n/a'; } })();
+      return [
+        '=== APEX HORIZON — error report ===',
+        'time: ' + new Date().toISOString(),
+        'url: ' + location.href,
+        'ua: ' + navigator.userAgent,
+        'screen: ' + innerWidth + 'x' + innerHeight + ' dpr=' + (devicePixelRatio || 1),
+        'gpu: ' + gl,
+        'stage: ' + (E.marks.join(' > ') || 'none') + (g ? ` | state=${g.state} mode=${g.mode || '-'} fps=${Math.round(g.renderer ? g.renderer.fps : 0)} q=${g.renderer ? g.renderer.qualityName : '-'}` : ''),
+        extra ? 'detail: ' + extra : '',
+        '--- log ---',
+        ...E.lines.slice(-30),
+        '=== end ===',
+      ].filter(Boolean).join('\n');
+    };
+    E.copy = async function (extra) {
+      const text = E.report(extra);
+      try { await navigator.clipboard.writeText(text); return true; }
+      catch (e) {
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = text; ta.style.cssText = 'position:fixed;opacity:0';
+          document.body.appendChild(ta); ta.select();
+          const ok = document.execCommand('copy'); ta.remove(); return ok;
+        } catch (e2) { window.prompt('Copy the report manually (Ctrl+C):', text); return false; }
+      }
+    };
+    E.bindAll = function (root) {
+      (root || document).querySelectorAll('[data-copy-report]').forEach((b) => {
+        if (b.__bound) return; b.__bound = true;
+        b.addEventListener('click', async (ev) => {
+          ev.stopPropagation();
+          const ok = await E.copy(b.dataset.copyExtra || '');
+          const old = b.textContent; b.textContent = ok ? 'COPIADO ✓' : 'CTRL+C MANUAL';
+          setTimeout(() => { b.textContent = old; }, 2200);
+        });
+      });
+    };
+    document.addEventListener('DOMContentLoaded', () => E.bindAll());
+  })();
+
+  // boot watchdog — if the module graph or assets stall, say so + offer COPY
   setTimeout(() => {
     if (!window.__GAME) {
       const el = document.getElementById('boot-status');
       const pct = document.getElementById('boot-pct');
-      if (el && !window.__GAME) {
-        el.textContent = 'Stalled: engine modules did not load. Hard-reload (Ctrl+Shift+R). Marks: ' + (window.__bootMarks.join(' > ') || 'none');
-        if (pct) pct.textContent = '!';
-      }
+      const cp = document.getElementById('boot-copy');
+      if (el) el.textContent = 'Stalled: engine modules did not load. Hard-reload (Ctrl+Shift+R) or copy the report below.';
+      if (pct) pct.textContent = '!';
+      if (cp) { cp.classList.remove('hidden'); window.__AH_ERR.bindAll(); }
     }
   }, 25000);
-  window.addEventListener('error', (e) => {
-    window.__bootMarks.push('err:' + (e.message || '').slice(0, 80));
-    const el = document.getElementById('boot-status');
-    if (el && !window.__GAME) el.textContent = 'Error: ' + (e.message || 'unknown') + ' — reload to retry';
-  }, true);
 </script>
 <script type="module" src="src/main.js"></script>
 </body>

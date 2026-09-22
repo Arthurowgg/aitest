@@ -11,7 +11,15 @@ function fatal(err) {
   console.error(err);
   const f = document.getElementById('fatal');
   f.classList.remove('hidden');
-  document.getElementById('fatal-msg').textContent = `${err && err.message ? err.message : err}\n\n${err && err.stack ? err.stack.split('\n').slice(0, 4).join('\n') : ''}`;
+  const msg = `${err && err.message ? err.message : err}`;
+  document.getElementById('fatal-msg').textContent = msg;
+  const rep = document.getElementById('fatal-report');
+  if (window.__AH_ERR) {
+    if (rep) rep.value = window.__AH_ERR.report(msg + (err && err.stack ? '\n' + err.stack.split('\n').slice(0, 6).join('\n') : ''));
+    window.__AH_ERR.bindAll(f);
+  }
+  const rb = document.getElementById('fatal-reload');
+  if (rb && !rb.__b) { rb.__b = 1; rb.onclick = () => location.reload(); }
 }
 
 const TIPS = [
